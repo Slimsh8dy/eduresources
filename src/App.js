@@ -10,6 +10,7 @@ function App() {
           <nav>
             <a href="#home">Home</a>
             <a href="#resources">Resources</a>
+            <a href="#visuals">Visualizations</a>
             <a href="#about">About</a>
             <a href="#contact">Contact</a>
           </nav>
@@ -65,6 +66,16 @@ function App() {
           </div>
         </div>
       </section>
+      <section id="visuals" className="section">
+        <div className="container">
+          <h2>Visualizations</h2>
+          <p>Visual aids for understanding essay structure and inferential flow.</p>
+          <div className="card">
+            <h3>Inferential Flow (Premises → Warrant → Conclusion → Qualification)</h3>
+            <VisualInferentialFlow />
+          </div>
+        </div>
+      </section>
       <section id="about" className="section">
         <div className="container">
           <h2>About Us</h2>
@@ -92,5 +103,40 @@ function App() {
     </div>
   );
 }
+
+const VisualInferentialFlow = () => (
+  <div className="w-full overflow-x-auto">
+    <svg viewBox="0 0 900 260" className="w-[900px] h-[260px]">
+      <defs>
+        <marker id="arrow2" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" />
+        </marker>
+      </defs>
+      {/* Nodes */}
+      {[
+        { id: "p1", x: 80, y: 60, label: "P1" },
+        { id: "p2", x: 80, y: 160, label: "P2" },
+        { id: "w1", x: 280, y: 110, label: "Warrant" },
+        { id: "d1", x: 280, y: 200, label: "Defeater?" },
+        { id: "c", x: 520, y: 110, label: "Conclusion" },
+        { id: "q", x: 720, y: 110, label: "Qualification" },
+      ].map((n) => (
+        <g key={n.id} transform={`translate(${n.x}, ${n.y})`}>
+          <rect width="120" height="40" rx="10" className="fill-white stroke-[1.5]" />
+          <text x="12" y="24" className="text-[12px]">{n.label}</text>
+        </g>
+      ))}
+      {/* Edges */}
+      <line x1="200" y1="80" x2="280" y2="120" strokeWidth="1.5" markerEnd="url(#arrow2)" />
+      <line x1="200" y1="180" x2="280" y2="140" strokeWidth="1.5" markerEnd="url(#arrow2)" />
+      <line x1="400" y1="130" x2="520" y2="130" strokeWidth="1.5" markerEnd="url(#arrow2)" />
+      <line x1="640" y1="130" x2="720" y2="130" strokeWidth="1.5" markerEnd="url(#arrow2)" />
+      <line x1="340" y1="220" x2="520" y2="150" strokeWidth="1.5" markerEnd="url(#arrow2)" />
+      <g transform="translate(60, 10)">
+        <text className="text-[12px]">Inferential Flow (Toulmin-flavoured)</text>
+      </g>
+    </svg>
+  </div>
+);
 
 export default App;
