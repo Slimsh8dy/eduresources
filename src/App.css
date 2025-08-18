@@ -162,3 +162,22 @@ footer {
   border-top: 1px solid #d0d0d0;
   color: #000000;
 }
+
+svg {
+  display: block;
+  margin: 0 auto;
+}
+
+svg .fill-white {
+  fill: #ffffff; /* White fill for nodes */
+}
+
+svg .stroke-[1.5] {
+  stroke: #000000; /* Black strokes for borders and lines */
+}
+
+svg text {
+  fill: #000000; /* Black text in SVG */
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+}
