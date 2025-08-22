@@ -48,7 +48,7 @@ function App() {
         <Route path="/philosophy-fundamentals" element={<PhilosophyFundamentals />} />
         <Route path="/philosophy-basics" element={<PhilosophyBasics />} />
         <Route path="/philosophy-ethics-revision" element={<PhilosophyEthicsRevision />} />
-        {/* Mind Maps folder: now shows download-only cards */}
+        {/* Mind Maps folder: download-only cards */}
         <Route path="/philosophy-ethics-mind-maps" element={<PhilosophyEthicsMindMaps />} />
         <Route path="/philosophy-ethics-questions" element={<PhilosophyEthicsQuestions />} />
       </Routes>
@@ -75,7 +75,7 @@ function MainLayout() {
 
       <section id="home" className="hero">
         <div className="container">
-          <h2>Access High-Quality Tutorials and Revision Resources</h2>
+          <h2>High-Quality Revision Resources and Tutorials</h2>
         </div>
       </section>
 
@@ -209,14 +209,30 @@ function PhilosophyBasics() {
   );
 }
 
+/** === Revision Notes folder (now with Utilitarianism) === */
 function PhilosophyEthicsRevision() {
+  const resources = [
+    {
+      title: "Utilitarianism (Revision Notes)",
+      file: "resources/Utilitarianism.pdf",
+      desc: "Concise notes on core utilitarian ideas and key distinctions.",
+    },
+  ];
+
   return (
     <div className="App">
       <section className="section">
         <div className="container">
-          <h2>Philosophy and Ethics Revision Notes Resources</h2>
-          <div className="card-grid"></div>
-          <Link to="/" className="btn">Back to Main Page</Link>
+          <nav style={{ marginBottom: 16 }}>
+            <Link to="/">← Back to Main Page</Link>
+          </nav>
+          <h2>Philosophy and Ethics Revision Notes — Resources</h2>
+          <p>Click a resource to download.</p>
+          <div className="card-grid">
+            {resources.map((r) => (
+              <DownloadCard key={r.file} title={r.title} file={r.file} desc={r.desc} />
+            ))}
+          </div>
         </div>
       </section>
     </div>
