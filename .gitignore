@@ -21,3 +21,8 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.env
+.env.*
+*.env
+rm --cached .env .env.production .env.save mail.env 2>/dev/null || true
+.env.example
