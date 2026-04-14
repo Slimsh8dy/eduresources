@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/eduresources/static/css/main.4f713afc.css",
+    "main.js": "/eduresources/static/js/main.495ac7e9.js",
+    "index.html": "/eduresources/index.html",
+    "main.4f713afc.css.map": "/eduresources/static/css/main.4f713afc.css.map",
+    "main.495ac7e9.js.map": "/eduresources/static/js/main.495ac7e9.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.4f713afc.css",
+    "static/js/main.495ac7e9.js"
+  ]
+}
