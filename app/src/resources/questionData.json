@@ -1,0 +1,59 @@
+{
+  "title": "Philosophy & Ethics: Practice Questions",
+  "edition": "September 2026",
+  "notice": "Original study prompts, not official exam-board questions, predictions, or a mark scheme. Choose questions that fit your course and your teacher’s guidance.",
+  "checklist": [
+    "Focus: Have I defined the disputed terms and answered this question?",
+    "Understanding: Have I represented the relevant thinkers accurately and checked my sources?",
+    "Analysis: Have I explained how each reason supports the conclusion?",
+    "Evaluation: Have I tested a serious objection and the best available response?",
+    "Judgement: Have I justified my conclusion and acknowledged its limits?"
+  ],
+  "topics": [
+    { "id": "natural-law", "label": "Natural Law", "questions": [
+      { "id": "nl-1", "focus": "Explain and evaluate", "prompt": "How far can an account of human purposes justify Aquinas’s primary precepts? Explain the link and assess one serious objection." },
+      { "id": "nl-2", "focus": "Compare", "prompt": "Does natural law offer clearer guidance than situation ethics when duties appear to conflict? Develop and test a comparison." },
+      { "id": "nl-3", "focus": "Apply", "prompt": "A person tells a lie to protect someone from an unjust threat. Can a natural-law approach distinguish a good intention from a justified action?" }
+    ]},
+    { "id": "situation-ethics", "label": "Situation Ethics", "questions": [
+      { "id": "se-1", "focus": "Explain and evaluate", "prompt": "Can agape provide a sufficiently clear standard for moral judgement? Explain Fletcher’s approach and consider the strongest challenge to it." },
+      { "id": "se-2", "focus": "Compare", "prompt": "Is situation ethics meaningfully different from utilitarianism? Assess the importance of their accounts of the good, not just their attention to outcomes." },
+      { "id": "se-3", "focus": "Apply", "prompt": "Keeping a promise would cause avoidable harm, but breaking it would damage trust. How could a situation ethicist reach and defend a decision?" }
+    ]},
+    { "id": "kantianism", "label": "Kantian Ethics", "questions": [
+      { "id": "ka-1", "focus": "Explain and evaluate", "prompt": "Does the distinction between acting from duty and acting in accordance with duty give a convincing account of moral worth?" },
+      { "id": "ka-2", "focus": "Compare", "prompt": "Which offers a stronger protection against exploitation: Kant’s formula of humanity or rule utilitarianism? Explain and assess a difficult case." },
+      { "id": "ka-3", "focus": "Apply", "prompt": "A seller hides an important defect because disclosure would reduce profit. Formulate the maxim and evaluate it using two formulations of the Categorical Imperative." }
+    ]},
+    { "id": "utilitarianism", "label": "Utilitarianism", "questions": [
+      { "id": "ut-1", "focus": "Explain and evaluate", "prompt": "Does Mill’s distinction between higher and lower pleasures improve on a purely quantitative account of happiness? Give reasons for your judgement." },
+      { "id": "ut-2", "focus": "Compare", "prompt": "Does rule utilitarianism answer the objection that act utilitarianism can sacrifice individuals unfairly? Consider both the reply and its costs." },
+      { "id": "ut-3", "focus": "Apply", "prompt": "A community must choose between a popular short-term benefit and a less popular long-term benefit. What makes the utilitarian comparison difficult, and can those difficulties be overcome?" }
+    ]},
+    { "id": "euthanasia", "label": "Euthanasia", "questions": [
+      { "id": "eu-1", "focus": "Explain and evaluate", "prompt": "How should an ethical argument about voluntary euthanasia weigh autonomy against the value of life? Define the practice precisely and assess a counterargument." },
+      { "id": "eu-2", "focus": "Compare", "prompt": "Do natural law and situation ethics disagree about euthanasia because of different moral principles, different assumptions about cases, or both?" },
+      { "id": "eu-3", "focus": "Analyse distinctions", "prompt": "Does the distinction between intending death and foreseeing death settle the moral debate about end-of-life decisions? Explain its role and test its limits." }
+    ]},
+    { "id": "business-ethics", "label": "Business Ethics", "questions": [
+      { "id": "be-1", "focus": "Explain and evaluate", "prompt": "Can a business justify decisions solely by their contribution to profit? Assess the strongest argument for this view and a serious objection." },
+      { "id": "be-2", "focus": "Compare", "prompt": "Would a Kantian or a utilitarian approach give a more convincing account of a company’s responsibilities to workers and customers?" },
+      { "id": "be-3", "focus": "Apply", "prompt": "A company can cut costs by concealing a risk from customers. Evaluate the decision without assuming that legality and morality are the same." }
+    ]},
+    { "id": "metaethics", "label": "Metaethics", "questions": [
+      { "id": "me-1", "focus": "Explain and evaluate", "prompt": "Does persistent moral disagreement show that moral judgements cannot be objectively true? Distinguish the claim from the argument offered for it." },
+      { "id": "me-2", "focus": "Compare", "prompt": "Does cognitivism or non-cognitivism better explain what speakers are doing when they disagree about whether an action is wrong?" },
+      { "id": "me-3", "focus": "Analyse an argument", "prompt": "Someone argues that an action is morally good because it is natural. What additional premise would the argument need, and could that premise be justified?" }
+    ]},
+    { "id": "conscience", "label": "Conscience", "questions": [
+      { "id": "co-1", "focus": "Explain and evaluate", "prompt": "Does a sincere judgement of conscience give a person a sufficient reason to act? Explain why sincerity and reliability might come apart." },
+      { "id": "co-2", "focus": "Compare", "prompt": "Can an account of conscience as rational moral judgement coexist with a psychological explanation of how it develops? Explain and evaluate the possible tension." },
+      { "id": "co-3", "focus": "Apply", "prompt": "Two informed people appeal to conscience to defend opposite decisions. What further reasons would help assess their claims without simply assuming one is correct?" }
+    ]},
+    { "id": "sexual-ethics", "label": "Sexual Ethics", "questions": [
+      { "id": "sx-1", "focus": "Explain and evaluate", "prompt": "Is freely given, informed consent sufficient for an ethical sexual relationship, or are further considerations needed? Explain and assess your criteria." },
+      { "id": "sx-2", "focus": "Compare", "prompt": "How do natural law and situation ethics justify their standards for sexual relationships? Compare their reasoning while representing those affected with respect." },
+      { "id": "sx-3", "focus": "Analyse distinctions", "prompt": "Should moral judgements about relationships distinguish personal disapproval, harm, and rights? Explain why the distinctions matter and assess a possible objection." }
+    ]}
+  ]
+}

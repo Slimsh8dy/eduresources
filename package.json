@@ -1,0 +1,20 @@
+{
+  "name": "eduresources",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "build": "vite build && node scripts/publish-build.mjs",
+    "preview": "node scripts/serve.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.85",
+    "fuse.js": "7.5.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-router-dom": "7.18.3"
+  },
+  "devDependencies": { "vite": "8.3.0" }
+}
