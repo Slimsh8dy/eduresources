@@ -1,0 +1,3 @@
+*.pdf binary
+*.wav binary
+assets/** binary linguist-generated
