@@ -11,9 +11,10 @@ export const DEFAULT_ORIGINS = ['https://slimsh8dy.github.io', 'http://localhost
 export const LIMITS = Object.freeze({
   questionChars: 1800,
   bodyBytes: 8 * 1024,
-  answerTokens: 1200,
-  logicTokens: 1800,
-  probeTokens: 24,
+  // Gemma 4 reasons privately before it answers and that reasoning counts against the budget.
+  answerTokens: 1600,
+  logicTokens: 4000,
+  probeTokens: 400,
   perVisitor: { limit: 3, period: 60 },  // per browser (client id); the LIMITER binding carries the same limit when present
   perAddress: { limit: 40, period: 60 }, // per network address, so a whole classroom behind one address is not treated as one visitor
 });

@@ -4,6 +4,18 @@ import { useAI } from './AiProvider.jsx';
 import { TUTOR_MODEL_LABEL } from './config.js';
 import { resourceTarget } from './grounding.mjs';
 
+/** The model sometimes answers in Markdown; the page shows text literally, so soften the symbols. */
+export function plainText(text) {
+  return String(text || '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^\s*[*\-]\s+/gm, '• ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function CatalogLinks({ resources }) {
   const base = import.meta.env?.BASE_URL || '/';
   const links = resources.map(resource => ({ resource, target: resourceTarget(resource, base) })).filter(item => item.target);
@@ -68,12 +80,12 @@ export default function AiTutorPage() {
     <div className="tutor-conversation" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
       {exchanges.map((exchange, index) => <article className="tutor-exchange" key={index}>
         <h2>{exchange.question}</h2>
-        <p className="tutor-answer">{exchange.answer}</p>
+        <p className="tutor-answer">{plainText(exchange.answer)}</p>
         <CatalogLinks resources={exchange.resources || []} />
       </article>)}
       {live && <article className="tutor-exchange is-live">
         <h2>{live.question}</h2>
-        <p className="tutor-answer">{live.answer || <span className="tutor-help">Thinking…</span>}</p>
+        <p className="tutor-answer">{live.answer ? plainText(live.answer) : <span className="tutor-help">Thinking…</span>}</p>
         <div ref={endRef} />
       </article>}
     </div>

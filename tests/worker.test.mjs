@@ -150,7 +150,7 @@ test('a stream with no answer text ends in an error event carrying a diagnostic,
 });
 
 test('probe performs one small real call and reports the shape or the error text', async () => {
-  const good = await handleRequest(new Request('https://tutor.example/probe', { headers: { Origin: ORIGIN } }), { AI: fakeAI((model, options) => { assert.equal(options.max_completion_tokens, 24); return { choices: [{ message: { content: 'OK' } }] }; }) });
+  const good = await handleRequest(new Request('https://tutor.example/probe', { headers: { Origin: ORIGIN } }), { AI: fakeAI((model, options) => { assert.equal(options.max_completion_tokens, 400); return { choices: [{ message: { content: 'OK' } }] }; }) });
   const body = await good.json();
   assert.equal(body.ok, true);
   assert.equal(body.text, 'OK');
