@@ -44,7 +44,7 @@ export function matchingCards(cards, topic = 'all', reviews = {}, queueOnly = fa
   return cards.filter(card => (filter === 'all' || card.tag === filter) && (!queueOnly || ['again', 'unsure'].includes(reviews[card.id])));
 }
 
-// WebLLM's structured-output grammar constrains field types. The validator below
+// The model's structured-output mode constrains field types. The validator below
 // separately enforces lengths and premise labels; grammar is not a correctness check.
 export const LOGIC_PROBLEM_SCHEMA = Object.freeze({
   type: 'object',

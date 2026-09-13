@@ -1,244 +1,163 @@
-export const WEBLLM_VERSION = '0.2.85';
-export const MODEL_IDS = {
-  f16: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
-  f32: 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
+// Browser client for the EduResources tutor Worker. No key, no model download:
+// the browser sends a question and receives a streamed answer.
+const abortError = () => Object.assign(new Error('Stopped.'), { name: 'AbortError' });
+const busyError = () => Object.assign(new Error('Please wait for the current answer to finish.'), { name: 'BusyError' });
+
+const FALLBACK_MESSAGES = {
+  network: 'The tutor could not be reached. Check your connection and try again.',
+  bad: 'The tutor returned something unexpected. Try again in a moment.',
+  timeout: 'That answer took too long and was stopped. Try a shorter question.',
 };
 
-const abortError = () => Object.assign(new Error('Local AI stopped.'), { name: 'AbortError' });
-const busyError = () => Object.assign(new Error('Please wait for the current AI operation to finish.'), { name: 'BusyError' });
-
-function checkedResponseFormat(format) {
-  if (format == null) return null;
-  if (typeof format !== 'object' || Array.isArray(format) || format.type !== 'json_object') {
-    throw new Error('Local AI structured output requires the json_object response format.');
+/** Parses one text/event-stream body, calling onEvent for each JSON payload. */
+export async function readEventStream(body, onEvent, signal) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  try {
+    for (;;) {
+      if (signal?.aborted) throw abortError();
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const chunks = pending.split(/\n\n/);
+      pending = chunks.pop() ?? '';
+      for (const chunk of chunks) {
+        for (const line of chunk.split(/\r?\n/)) {
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          let parsed;
+          try { parsed = JSON.parse(data); } catch { continue; }
+          onEvent(parsed);
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* already released */ }
   }
-  const result = { type: 'json_object' };
-  if (format.schema !== undefined) {
-    if (typeof format.schema !== 'string' || format.schema.length > 20_000) throw new Error('The output schema must be a JSON string shorter than 20,000 characters.');
-    let schema;
-    try { schema = JSON.parse(format.schema); } catch { throw new Error('The output schema is not valid JSON.'); }
-    if (!schema || typeof schema !== 'object' || Array.isArray(schema)) throw new Error('The output schema must describe a JSON object.');
-    result.schema = JSON.stringify(schema);
-  }
-  // Do not spread caller-supplied options: only the supported format fields reach the engine.
-  return result;
 }
 
-function readableError(error) {
-  const message = typeof error?.message === 'string' ? error.message : String(error || 'Unknown error');
-  if (/quota|storage.*(full|exceed)/i.test(message)) return 'There is not enough browser storage for the model. Free some space and try again.';
-  if (/fetch|network|download|load failed/i.test(message)) return 'The model could not be downloaded. Check your connection and whether your network allows Hugging Face and GitHub downloads, then retry.';
-  if (/gpu|out of memory|device.*lost|buffer.*size/i.test(message)) return 'The graphics device could not run this model. Close other graphics-heavy tabs and retry, or use a compatible device. All ordinary study tools remain available.';
-  if (/timed out/i.test(message)) return message;
-  return 'Local AI could not complete that operation. Please enable it again and retry.';
+/** A random id per browser so fair-use limits apply per person, not per school network. Not an account. */
+export function browserId(storage) {
+  const key = 'eduresources.tutor.client.v1';
+  const make = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join(''));
+  try {
+    const store = storage === undefined ? globalThis.localStorage : storage;
+    const existing = store?.getItem(key);
+    if (existing && /^[A-Za-z0-9-]{8,64}$/.test(existing)) return existing;
+    const fresh = make();
+    store?.setItem(key, fresh);
+    return fresh;
+  } catch { return make(); }
 }
 
-/** Browser-only defaults are lazy so unsupported browsers can use the whole site. */
-const browserDependencies = {
-  getNavigator: () => globalThis.navigator,
-  loadRuntime: () => import('@mlc-ai/web-llm'),
-  createWorker: () => new Worker(new URL('./ai.worker.js', import.meta.url), { type: 'module' }),
-};
-
-/** One controller per app, not per tool. Dependencies are injectable for offline tests. */
-export function createLocalAIClient(overrides = {}) {
-  const dependencies = { ...browserDependencies, ...overrides };
-  const loadTimeout = overrides.loadTimeout ?? 10 * 60_000;
-  const generationTimeout = overrides.generationTimeout ?? 180_000;
-  let state = { status: 'idle', progress: null, error: '', modelId: '', enabled: false, ready: false, busy: false };
-  let engine = null;
-  let worker = null;
-  let operation = null;
-  let enablePromise = null;
-  let disposed = false;
+export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs = 90_000, clientId } = {}) {
+  const doFetch = fetchImpl || ((...args) => globalThis.fetch(...args));
+  const id = clientId || browserId();
+  const base = String(endpoint || '').replace(/\/+$/, '');
+  let state = { status: 'idle', busy: false, error: '', detail: '', configured: Boolean(base) };
+  let controller = null;
   const listeners = new Set();
+  const publish = patch => { state = { ...state, ...patch, busy: patch.status === 'generating' }; listeners.forEach(fn => fn(state)); };
 
-  function publish(patch) {
-    if (disposed) return;
-    state = { ...state, ...patch };
-    state.enabled = Boolean(engine);
-    state.ready = Boolean(engine) && (state.status === 'ready' || state.status === 'generating');
-    state.busy = ['checking', 'loading', 'generating', 'clearing'].includes(state.status);
-    listeners.forEach(listener => listener(state));
+  async function post(path, payload, signal) {
+    if (!base) throw new Error('The tutor is not connected yet.');
+    let response;
+    try {
+      response = await doFetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Tutor-Client': id }, body: JSON.stringify(payload), signal });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      throw Object.assign(new Error(FALLBACK_MESSAGES.network), { name: 'NetworkError' });
+    }
+    if (!response.ok) {
+      let message = FALLBACK_MESSAGES.bad;
+      let code = 'error';
+      let detail = '';
+      try { const body = await response.json(); message = body.message || message; code = body.error || code; detail = typeof body.detail === 'string' ? body.detail : ''; } catch { /* non-JSON error */ }
+      throw Object.assign(new Error(message), { name: 'TutorError', code, status: response.status, detail });
+    }
+    return response;
   }
 
-  function terminate() {
-    try { engine?.interruptGenerate(); } catch { /* The worker may already be gone. */ }
-    worker?.terminate();
-    engine = null;
-    worker = null;
+  function begin() {
+    if (controller) throw busyError();
+    controller = new AbortController();
+    const timer = setTimeout(() => controller?.abort(Object.assign(new Error(FALLBACK_MESSAGES.timeout), { name: 'TimeoutError' })), timeoutMs);
+    publish({ status: 'generating', error: '' });
+    return { signal: controller.signal, end() { clearTimeout(timer); controller = null; } };
   }
 
-  function begin(timeoutMs, timeoutMessage) {
-    if (operation) throw busyError();
-    let rejectCancellation;
-    const token = {
-      cancelled: false,
-      cancellation: new Promise((_, reject) => { rejectCancellation = reject; }),
-      cancel(reason = abortError()) {
-        if (token.cancelled) return;
-        token.cancelled = true;
-        rejectCancellation(reason);
-      },
-    };
-    // Attach a handler immediately, even while an asynchronous compatibility check runs.
-    token.cancellation.catch(() => {});
-    token.timer = setTimeout(() => token.cancel(new Error(timeoutMessage)), timeoutMs);
-    operation = token;
-    return token;
+  function settle(error) {
+    if (!error) { publish({ status: 'idle', error: '', detail: '' }); return; }
+    if (error.name === 'AbortError') { publish({ status: 'idle', error: '', detail: '' }); return; }
+    if (error.name === 'TimeoutError') { publish({ status: 'error', error: FALLBACK_MESSAGES.timeout, detail: '' }); return; }
+    publish({ status: 'error', error: error.message || FALLBACK_MESSAGES.bad, detail: typeof error.detail === 'string' ? error.detail : '' });
   }
 
-  const current = token => operation === token && !token.cancelled && !disposed;
-  async function waitFor(token, promise) {
-    const result = await Promise.race([promise, token.cancellation]);
-    if (!current(token)) throw abortError();
-    return result;
+  /** Streams an answer. onDelta receives text as it arrives; resolves with the whole exchange. */
+  async function ask(question, { onDelta } = {}) {
+    const text = String(question || '').trim();
+    if (!text) throw new Error('Enter a question first.');
+    const run = begin();
+    let answer = '';
+    let resources = [];
+    try {
+      const response = await post('/ask', { question: text }, run.signal);
+      const type = response.headers.get('Content-Type') || '';
+      if (type.includes('text/event-stream') && response.body) {
+        let failure = null;
+        await readEventStream(response.body, event => {
+          if (event.type === 'meta' && Array.isArray(event.resources)) resources = event.resources;
+          else if (event.type === 'delta' && typeof event.text === 'string') { answer += event.text; onDelta?.(answer); }
+          else if (event.type === 'error') failure = Object.assign(new Error(event.message || FALLBACK_MESSAGES.bad), { name: 'TutorError', detail: typeof event.detail === 'string' ? event.detail : '' });
+        }, run.signal);
+        if (failure && !answer.trim()) throw failure;
+      } else {
+        const body = await response.json();
+        answer = String(body.answer || '');
+        resources = Array.isArray(body.resources) ? body.resources : [];
+        onDelta?.(answer);
+      }
+      if (!answer.trim()) throw Object.assign(new Error(FALLBACK_MESSAGES.bad), { name: 'TutorError' });
+      run.end();
+      settle(null);
+      return { answer: answer.trim(), resources };
+    } catch (error) {
+      const failure = run.signal.aborted && run.signal.reason?.name === 'TimeoutError' ? run.signal.reason : error;
+      run.end();
+      settle(failure);
+      throw failure;
+    }
   }
-  function finish(token) {
-    clearTimeout(token.timer);
-    if (operation === token) operation = null;
+
+  /** Returns the raw JSON text of a generated logic problem; the caller validates it. */
+  async function generateLogicProblem(difficulty) {
+    const run = begin();
+    try {
+      const response = await post('/logic', { difficulty }, run.signal);
+      const body = await response.json();
+      if (typeof body.problem !== 'string' || !body.problem.trim()) throw Object.assign(new Error(FALLBACK_MESSAGES.bad), { name: 'TutorError' });
+      run.end();
+      settle(null);
+      return body.problem;
+    } catch (error) {
+      const failure = run.signal.aborted && run.signal.reason?.name === 'TimeoutError' ? run.signal.reason : error;
+      run.end();
+      settle(failure);
+      throw failure;
+    }
   }
 
   function stop() {
-    operation?.cancel();
-    if (operation) clearTimeout(operation.timer);
-    operation = null;
-    enablePromise = null;
-    terminate();
-    publish({ status: 'idle', progress: null, error: '' });
-  }
-
-  async function enable() {
-    if (disposed) throw abortError();
-    if (enablePromise) return enablePromise;
-    if (engine && !operation) return state.modelId;
-    if (operation) throw busyError();
-    const token = begin(loadTimeout, 'Loading the model timed out. Check your connection and retry; completed downloads may be reused.');
-    publish({ status: 'checking', error: '', progress: null });
-    const task = (async () => {
-      try {
-        const browser = dependencies.getNavigator();
-        if (!browser?.gpu) {
-          publish({ status: 'unsupported', error: 'This browser does not provide WebGPU. Try an up-to-date compatible browser with graphics acceleration enabled. Ordinary search and study tools still work.' });
-          return false;
-        }
-        const adapter = await waitFor(token, browser.gpu.requestAdapter());
-        if (!adapter) {
-          publish({ status: 'unsupported', error: 'A compatible graphics device is not available to this browser. Ordinary search and study tools still work.' });
-          return false;
-        }
-        const modelId = adapter.features.has('shader-f16') ? MODEL_IDS.f16 : MODEL_IDS.f32;
-        publish({ status: 'loading', modelId, progress: { progress: 0, text: 'Preparing the local model…' } });
-        const runtime = await waitFor(token, dependencies.loadRuntime());
-        worker = dependencies.createWorker();
-        worker.onerror = () => token.cancel(new Error('The AI worker could not start.'));
-        const loaded = await waitFor(token, runtime.CreateWebWorkerMLCEngine(worker, modelId, {
-          initProgressCallback: report => {
-            if (current(token)) publish({ progress: {
-              progress: Math.min(1, Math.max(0, Number(report.progress) || 0)),
-              text: String(report.text || 'Loading model…'),
-            } });
-          },
-        }, { context_window_size: 4096 }));
-        engine = loaded;
-        worker.onerror = () => {
-          if (operation) operation.cancel(new Error('The AI worker stopped unexpectedly.'));
-          else {
-            terminate();
-            publish({ status: 'error', error: 'Local AI stopped unexpectedly. Enable it again to continue.', progress: null });
-          }
-        };
-        publish({ status: 'ready', progress: { progress: 1, text: 'Model ready on this device.' }, error: '' });
-        return modelId;
-      } catch (error) {
-        if (operation === token) {
-          terminate();
-          publish({ status: error.name === 'AbortError' ? 'idle' : 'error', error: error.name === 'AbortError' ? '' : readableError(error), progress: null });
-        }
-        throw error;
-      } finally {
-        finish(token);
-      }
-    })();
-    enablePromise = task;
-    try { return await task; }
-    finally { if (enablePromise === task) enablePromise = null; }
-  }
-
-  async function generate({ system = '', prompt = '', maxTokens = 400, responseFormat } = {}) {
-    if (!String(prompt).trim()) throw new Error('Enter a question first.');
-    if (operation) throw busyError();
-    if (!engine || disposed) throw new Error('Enable local AI before asking a question.');
-    const format = checkedResponseFormat(responseFormat);
-    const token = begin(generationTimeout, 'This answer took too long, so local AI was stopped. Enable it again and try a shorter question.');
-    const activeEngine = engine;
-    publish({ status: 'generating', error: '' });
-    try {
-      const response = await waitFor(token, activeEngine.chat.completions.create({
-        messages: [
-          { role: 'system', content: (String(system).slice(0, 6200) || 'Give concise, careful philosophy study help. Acknowledge uncertainty.')
-            + (format ? '\nReturn ONLY a JSON object that follows the required output schema. Put explanations in the required string fields; do not include Markdown fences or text outside the object.' : '') },
-          { role: 'user', content: String(prompt).trim().slice(0, 1800) },
-        ],
-        temperature: 0.2,
-        max_tokens: Math.min(1400, Math.max(32, Number(maxTokens) || 400)),
-        stream: false,
-        ...(format ? { response_format: format } : {}),
-      }));
-      const content = response?.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || !content.trim()) throw new Error('The model returned no answer.');
-      publish({ status: 'ready', error: '' });
-      return content.trim();
-    } catch (error) {
-      if (operation === token) {
-        terminate();
-        publish({ status: error.name === 'AbortError' ? 'idle' : 'error', error: error.name === 'AbortError' ? '' : readableError(error), progress: null });
-      }
-      throw error;
-    } finally {
-      finish(token);
-    }
-  }
-
-  async function unload() {
-    const previousEngine = engine;
-    // In-flight operations need immediate termination rather than waiting behind inference.
-    if (operation) { stop(); return; }
-    if (previousEngine) {
-      const token = begin(3000, 'Unloading timed out.');
-      publish({ status: 'clearing', error: '' });
-      try { await waitFor(token, previousEngine.unload()); } catch { /* Terminate below. */ }
-      // A stop followed by a new enable must not let this older unload destroy it.
-      const stillOwnsEngine = operation === token;
-      finish(token);
-      if (!stillOwnsEngine) return;
-    }
-    terminate();
-    publish({ status: 'idle', progress: null, error: '' });
-  }
-
-  async function clearCache() {
-    await unload();
-    if (disposed) throw abortError();
-    const token = begin(30_000, 'Removing downloaded files timed out. You can also clear this site’s storage in your browser settings.');
-    publish({ status: 'clearing', error: '' });
-    try {
-      const runtime = await waitFor(token, dependencies.loadRuntime());
-      // Clear both supported variants; no unrelated website data is touched.
-      for (const id of Object.values(MODEL_IDS)) {
-        await waitFor(token, runtime.deleteModelAllInfoInCache(id));
-      }
-      publish({ status: 'idle', modelId: '', progress: null, error: '' });
-    } catch (error) {
-      if (operation === token) publish({ status: 'error', error: readableError(error) });
-      throw error;
-    } finally { finish(token); }
+    if (!controller) return;
+    controller.abort(abortError());
   }
 
   return {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    enable, generate, stop, unload, clearCache,
-    dispose() { stop(); disposed = true; listeners.clear(); },
+    ask, generateLogicProblem, stop,
+    dispose() { stop(); listeners.clear(); },
   };
 }

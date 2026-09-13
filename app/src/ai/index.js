@@ -1,2 +1,2 @@
 export { AiProvider, useAI } from './AiProvider.jsx';
-export { default as LocalAIPage } from './LocalAIPage.jsx';
+export { default as AiTutorPage } from './AiTutorPage.jsx';

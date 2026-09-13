@@ -1,148 +1,116 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLocalAIClient, MODEL_IDS } from '../app/src/ai/client.mjs';
+import { browserId, createTutorClient, readEventStream } from '../app/src/ai/client.mjs';
 import { relatedResources, resourceTarget, studyContext } from '../app/src/ai/grounding.mjs';
 
-function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
+const encoder = new TextEncoder();
+const sse = events => new ReadableStream({
+  start(controller) {
+    for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+    controller.close();
+  },
+});
+const streamResponse = events => new Response(sse(events), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-function fixture(extra = {}) {
-  const events = { imports: 0, loads: 0, terminated: 0, deleted: [] };
-  const answer = deferred();
-  const engine = { interruptGenerate() {}, unload: async () => {}, chat: { completions: { create: request => { events.lastRequest = request; return answer.promise; } } } };
-  const client = createLocalAIClient({
-    getNavigator: () => ({ gpu: { requestAdapter: async () => ({ features: new Set(['shader-f16']) }) } }),
-    loadRuntime: async () => {
-      events.imports++;
-      return {
-        CreateWebWorkerMLCEngine: async () => { events.loads++; return engine; },
-        deleteModelAllInfoInCache: async id => { events.deleted.push(id); },
-      };
+test('client without an endpoint reports itself unconfigured and refuses to ask', async () => {
+  const client = createTutorClient({ endpoint: '' });
+  assert.equal(client.getSnapshot().configured, false);
+  await assert.rejects(client.ask('Explain validity.'), /not connected/);
+  client.dispose();
+});
+
+test('ask streams deltas, collects catalogue links and settles idle', async () => {
+  const calls = [];
+  const client = createTutorClient({
+    endpoint: 'https://tutor.example/',
+    fetch: async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body), client: init.headers['X-Tutor-Client'] });
+      return streamResponse([
+        { type: 'meta', resources: [{ id: 'tool-logic-practice', title: 'Logic Practice', route: '/philosophy-fundamentals/logic-problems' }] },
+        { type: 'delta', text: 'A valid argument ' }, { type: 'delta', text: 'preserves truth.' }, { type: 'done' },
+      ]);
     },
-    createWorker: () => ({ terminate() { events.terminated++; } }),
-    ...extra,
   });
-  return { client, events, answer, engine };
-}
-
-test('creating the client downloads nothing; unsupported browser does not load runtime', async () => {
-  const { client, events } = fixture({ getNavigator: () => ({}) });
-  assert.equal(events.imports, 0);
-  assert.equal(await client.enable(), false);
-  assert.equal(events.imports, 0);
-  assert.equal(client.getSnapshot().status, 'unsupported');
-  client.dispose();
-});
-
-test('concurrent enable calls load one model; generation rejects overlap', async () => {
-  const { client, events, answer } = fixture();
-  await Promise.all([client.enable(), client.enable()]);
-  assert.equal(events.loads, 1);
-  assert.equal(client.getSnapshot().modelId, MODEL_IDS.f16);
-  const pending = client.generate({ prompt: 'Explain validity.', maxTokens: 1400 });
-  assert.equal(events.lastRequest.max_tokens, 1400, 'structured exercises have room for a complete JSON response');
-  await assert.rejects(client.generate({ prompt: 'Another question' }), { name: 'BusyError' });
-  answer.resolve({ choices: [{ message: { content: 'A valid argument preserves truth.' } }] });
-  assert.match(await pending, /preserves truth/);
-  assert.equal(client.getSnapshot().status, 'ready');
-  client.dispose();
-});
-
-test('stop rejects a pending answer and a late reply cannot restore ready state', async () => {
-  const { client, events, answer } = fixture();
-  await client.enable();
-  const pending = client.generate({ prompt: 'Explain duty.' });
-  client.stop();
-  await assert.rejects(pending, { name: 'AbortError' });
-  answer.resolve({ choices: [{ message: { content: 'A late reply' } }] });
-  await Promise.resolve();
+  const seen = [];
+  const result = await client.ask('What is validity?', { onDelta: text => seen.push(text) });
+  assert.equal(calls[0].url, 'https://tutor.example/ask');
+  assert.deepEqual(calls[0].body, { question: 'What is validity?' });
+  assert.match(calls[0].client, /^[A-Za-z0-9-]{8,64}$/);
+  assert.deepEqual(seen, ['A valid argument ', 'A valid argument preserves truth.']);
+  assert.equal(result.answer, 'A valid argument preserves truth.');
+  assert.equal(result.resources[0].id, 'tool-logic-practice');
   assert.equal(client.getSnapshot().status, 'idle');
-  assert.equal(client.getSnapshot().ready, false);
-  assert.equal(events.terminated, 1);
+  assert.equal(client.getSnapshot().busy, false);
   client.dispose();
 });
 
-test('generation timeout terminates worker and leaves a recoverable error', async () => {
-  const { client, events } = fixture({ generationTimeout: 10 });
-  await client.enable();
-  await assert.rejects(client.generate({ prompt: 'A question' }), /took too long/);
+test('server error messages are surfaced and overlapping requests are refused', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const client = createTutorClient({ endpoint: 'https://tutor.example', fetch: async () => { await gate; return jsonResponse({ error: 'quota', message: 'Allowance used up.' }, 429); } });
+  const pending = client.ask('Question one');
+  await assert.rejects(client.ask('Question two'), { name: 'BusyError' });
+  release();
+  await assert.rejects(pending, { code: 'quota', message: 'Allowance used up.' });
   assert.equal(client.getSnapshot().status, 'error');
-  assert.equal(events.terminated, 1);
+  assert.match(client.getSnapshot().error, /Allowance/);
   client.dispose();
 });
 
-test('a cancelled unload cannot tear down a subsequently enabled engine', async () => {
-  const { client, events, engine } = fixture();
-  const waiting = deferred();
-  engine.unload = () => waiting.promise;
-  await client.enable();
-  const unloading = client.unload();
-  client.stop();
-  await client.enable();
-  waiting.resolve();
-  await unloading;
-  assert.equal(events.loads, 2);
-  assert.equal(client.getSnapshot().status, 'ready');
-  assert.equal(events.terminated, 1);
-  client.dispose();
-});
-
-test('cancelling model loading ignores late loader completion', async () => {
-  const loading = deferred();
-  const { client, events } = fixture({ loadRuntime: async () => ({ CreateWebWorkerMLCEngine: () => loading.promise }) });
-  const pending = client.enable();
-  await new Promise(resolve => setTimeout(resolve, 0));
+test('stop aborts an answer in flight and leaves the client idle', async () => {
+  const client = createTutorClient({
+    endpoint: 'https://tutor.example',
+    fetch: (url, init) => new Promise((resolve, reject) => { init.signal.addEventListener('abort', () => reject(init.signal.reason)); }),
+  });
+  const pending = client.ask('Explain duty.');
   client.stop();
   await assert.rejects(pending, { name: 'AbortError' });
-  loading.resolve({ interruptGenerate() {} });
-  await Promise.resolve();
-  assert.equal(client.getSnapshot().ready, false);
   assert.equal(client.getSnapshot().status, 'idle');
-  assert.equal(events.terminated, 1);
+  const again = client.ask('Second question'); // the client is reusable afterwards
+  client.stop();
+  await assert.rejects(again, { name: 'AbortError' });
   client.dispose();
 });
 
-test('no f16 feature selects compatible model; cache removal targets only the two model variants', async () => {
-  const { client, events } = fixture({ getNavigator: () => ({ gpu: { requestAdapter: async () => ({ features: new Set() }) } }) });
-  await client.enable();
-  assert.equal(client.getSnapshot().modelId, MODEL_IDS.f32);
-  await client.clearCache();
-  assert.deepEqual(events.deleted, Object.values(MODEL_IDS));
-  assert.equal(client.getSnapshot().status, 'idle');
-  client.dispose();
-});
-
-test('structured format forwards only type and schema without allowing request-key overrides', async () => {
-  const { client, events, answer } = fixture();
-  await client.enable();
-  const schema = JSON.stringify({ type: 'object', properties: { solution: { type: 'string' } }, required: ['solution'], additionalProperties: false });
-  const pending = client.generate({
-    system: 'Create a logic exercise.', prompt: 'One example', maxTokens: 1400,
-    responseFormat: { type: 'json_object', schema, stream: true, messages: [{ role: 'system', content: 'INJECTED' }], max_tokens: 999999 },
+test('a timeout is reported as a recoverable error', async () => {
+  const client = createTutorClient({
+    endpoint: 'https://tutor.example', timeoutMs: 10,
+    fetch: (url, init) => new Promise((resolve, reject) => { init.signal.addEventListener('abort', () => reject(init.signal.reason)); }),
   });
-  assert.deepEqual(events.lastRequest.response_format, { type: 'json_object', schema });
-  assert.equal(events.lastRequest.stream, false);
-  assert.equal(events.lastRequest.max_tokens, 1400);
-  assert.equal(events.lastRequest.messages[1].content, 'One example');
-  assert.match(events.lastRequest.messages[0].content, /Return ONLY a JSON object/);
-  assert.doesNotMatch(JSON.stringify(events.lastRequest), /INJECTED/);
-  answer.resolve({ choices: [{ message: { content: '{"solution":"A valid argument."}' } }] });
-  assert.equal(await pending, '{"solution":"A valid argument."}');
+  await assert.rejects(client.ask('A slow question'), /took too long/);
+  assert.equal(client.getSnapshot().status, 'error');
   client.dispose();
 });
 
-test('invalid structured-output schema is rejected before inference without unloading a ready model', async () => {
-  const { client, events } = fixture();
-  await client.enable();
-  await assert.rejects(client.generate({ prompt: 'Example', responseFormat: { type: 'json_object', schema: '{broken' } }), /not valid JSON/);
-  await assert.rejects(client.generate({ prompt: 'Example', responseFormat: { type: 'structural_tag' } }), /json_object/);
-  assert.equal(events.lastRequest, undefined);
-  assert.equal(client.getSnapshot().ready, true);
+test('logic generation returns the raw JSON text for the site to validate', async () => {
+  const client = createTutorClient({ endpoint: 'https://tutor.example', fetch: async (url, init) => {
+    assert.equal(url, 'https://tutor.example/logic');
+    assert.deepEqual(JSON.parse(init.body), { difficulty: 'easy' });
+    return jsonResponse({ problem: '{"title":"x"}' });
+  } });
+  assert.equal(await client.generateLogicProblem('easy'), '{"title":"x"}');
   client.dispose();
+});
+
+test('browser id is stable per storage and survives storage failures', () => {
+  const memory = new Map();
+  const storage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value) };
+  const first = browserId(storage);
+  assert.equal(browserId(storage), first);
+  assert.match(first, /^[A-Za-z0-9-]{8,64}$/);
+  assert.match(browserId(null), /^[A-Za-z0-9-]{8,64}$/);
+  assert.match(browserId({ getItem() { throw new Error('blocked'); }, setItem() {} }), /^[A-Za-z0-9-]{8,64}$/);
+});
+
+test('event-stream parser copes with events split across chunks', async () => {
+  const text = 'data: {"type":"delta","text":"Hel"}\n\ndata: {"type":"delta","text":"lo"}\n\ndata: {"type":"done"}\n\n';
+  const parts = [text.slice(0, 20), text.slice(20, 47), text.slice(47)];
+  const body = new ReadableStream({ start(controller) { for (const part of parts) controller.enqueue(encoder.encode(part)); controller.close(); } });
+  const events = [];
+  await readEventStream(body, event => events.push(event));
+  assert.deepEqual(events.map(e => e.type), ['delta', 'delta', 'done']);
+  assert.equal(events[0].text + events[1].text, 'Hello');
 });
 
 test('catalog grounding ranks matches and links only safe catalog routes/files', () => {

@@ -1,0 +1,9 @@
+{
+  "name": "eduresources-tutor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "npx wrangler deploy",
+    "dev": "npx wrangler dev --remote"
+  }
+}

@@ -1,23 +1,22 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { createLocalAIClient } from './client.mjs';
+import { createTutorClient } from './client.mjs';
+import { TUTOR_ENDPOINT } from './config.js';
 
 const AiContext = createContext(null);
 
 export function AiProvider({ children }) {
   const clientRef = useRef(null);
-  if (!clientRef.current) clientRef.current = createLocalAIClient();
+  if (!clientRef.current) clientRef.current = createTutorClient({ endpoint: TUTOR_ENDPOINT });
   const client = clientRef.current;
   const [snapshot, setSnapshot] = useState(client.getSnapshot);
 
   useEffect(() => {
     setSnapshot(client.getSnapshot());
     const unsubscribe = client.subscribe(setSnapshot);
-    // stop(), rather than permanent dispose(), also supports StrictMode's effect replay.
     return () => { unsubscribe(); client.stop(); };
   }, [client]);
 
-  return <AiContext.Provider value={{ ...snapshot, enable: client.enable, generate: client.generate,
-    stop: client.stop, unload: client.unload, clearCache: client.clearCache }}>
+  return <AiContext.Provider value={{ ...snapshot, ask: client.ask, generateLogicProblem: client.generateLogicProblem, stop: client.stop }}>
     {children}
   </AiContext.Provider>;
 }

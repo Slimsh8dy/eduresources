@@ -1,3 +1,30 @@
+# Release verification — Cloudflare tutor and minimal interface (13 September 2026)
+
+Built in a fresh clone of `gh-pages` on a review branch. The interface was restyled (one ground, hairline rules, ink only; no card boxes; one filled primary control per view) without removing any feature. The browser-local WebLLM tutor was replaced by a Cloudflare Worker that calls Workers AI (`@cf/google/gemma-4-26b-a4b-it`) with the grounding prompt built server-side.
+
+## Automated checks
+
+- `npm test`: 54 tests passed (content, state, ratings, catalogue/asset protection, tutor client, Worker).
+- Worker tests cover CORS allow/refuse and preflight, streamed meta/delta/done events, stripping of `<think>` blocks across chunk boundaries, input limits enforced before any model call, the per-visitor limit keyed by a per-browser id (Cache-API fallback and rate-limit binding) with a separate per-address ceiling so a classroom behind one address is not one visitor, the daily-allowance quota message, structured-output request with fallback, and health/unconfigured responses.
+- Client tests cover the unconfigured state, streamed deltas and catalogue links, surfaced server messages, refusal of overlapping requests, stop/abort, timeouts, logic-problem generation, and chunk-split event parsing.
+- `npm run build` and `npm run build:worker` both pass; the Worker bundle is a single dependency-free file.
+
+## End-to-end checks (real Worker code in Node with a fake Workers AI binding)
+
+- A question on the tutor page streams word by word, the hidden reasoning block is never shown, and the related-resource links come from the catalogue.
+- A fourth request within a minute from the same address is refused with the fair-use message; the fifth after the window succeeds.
+- The daily-allowance error from the model becomes the plain "used up today's free allowance" message.
+- The logic page generates an AI problem through the Worker; it is validated and labelled as unchecked practice.
+- No console errors on the home, topic, tutor, logic, essay and search views at 1280 px and 400 px widths.
+
+## Not verified here
+
+- The live Workers AI response quality and latency of Gemma 4 26B, and whether it accepts `response_format: json_schema` (the Worker falls back to plain generation if not).
+- The exact wording of Cloudflare's quota error; the Worker matches several likely forms.
+- Whether the Rate limiting binding can be added from the dashboard on the Free plan; the fallback limiter covers its absence.
+
+---
+
 # Release verification — September 2026
 
 This update was built in an isolated copy of the published `gh-pages` branch.

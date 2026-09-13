@@ -37,7 +37,7 @@ const DUPLICATE_PDFS = [
 ];
 const STATIC_ROUTES = new Set([
   '/intro-philosophy-ethics', '/philosophy-fundamentals', '/philosophy-fundamentals/logic-problems',
-  '/philosophy-basics', '/philosophy-ethics-mind-maps', '/philosophy-ethics-questions', '/flashcards', '/local-ai',
+  '/philosophy-basics', '/philosophy-ethics-mind-maps', '/philosophy-ethics-questions', '/flashcards', '/ai-tutor',
 ]);
 const TOPIC_ROUTES = new Set(['utilitarianism', 'kantianism', 'augustine', 'natural-law', 'situation-ethics', 'gender-theology']);
 

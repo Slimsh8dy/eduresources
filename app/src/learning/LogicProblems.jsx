@@ -2,7 +2,7 @@ import React from 'react';
 import {Link} from 'react-router-dom';
 import {useAI} from '../ai/AiProvider';
 import {LOGIC_PROBLEMS} from './content.js';
-import {STORAGE_KEYS, isLogicAttempts, validateGeneratedProblem, isGeneratedProblemList, buildLogicGenerationRequest} from './state.mjs';
+import {STORAGE_KEYS, isLogicAttempts, validateGeneratedProblem, isGeneratedProblemList} from './state.mjs';
 import {SaveStatus, SourceLinks, useDeviceSave} from './useDeviceSave.jsx';
 import './learning.css';
 
@@ -46,10 +46,10 @@ export default function LogicProblems() {
   const revised = LOGIC_PROBLEMS.filter(problem => attempts[problem.id]?.revision.trim()).length;
   function updateAttempt(id, changes) { setAttempts(current => ({...current, [id]: {...EMPTY_ATTEMPT, ...current[id], ...changes}})); }
   async function generateProblem() {
-    if (!ai.ready || ai.busy || generating) return;
+    if (!ai.configured || ai.busy || generating) return;
     setGenerating(true); setError('');
     try {
-      const raw = await ai.generate(buildLogicGenerationRequest(difficulty));
+      const raw = await ai.generateLogicProblem(difficulty);
       const checked = validateGeneratedProblem(raw);
       const problem = {...checked, id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, difficulty, isAI: true};
       setGenerated(current => [...current, problem]);
@@ -62,8 +62,8 @@ export default function LogicProblems() {
     <p className="learn-help">{started} of 12 core problems have your notes · {revised} have a revision. Progress records your work, not a grade.</p>
     <div className="learn-actions logic-levels" role="group" aria-label="Problem difficulty">{Object.entries(LEVELS).map(([value, label]) => <button type="button" key={value} aria-pressed={difficulty === value} onClick={() => setDifficulty(value)}>{label} ({LOGIC_PROBLEMS.filter(problem => problem.difficulty === value).length})</button>)}</div>
     {core.map(problem => <LogicCard key={problem.id} problem={problem} attempt={attempts[problem.id] || EMPTY_ATTEMPT} update={changes => updateAttempt(problem.id, changes)} />)}
-    <section className="learn-panel logic-generation"><h2>More practice with local AI</h2><p>Generate an additional problem using the model enabled on this device. The original problems are available without AI.</p>
-      {!ai.ready ? <p><Link to="/local-ai">Set up local AI</Link> to generate a new practice problem.</p> : <div className="learn-actions"><button type="button" disabled={ai.busy || generating} onClick={generateProblem}>{generating ? 'Generating…' : `Generate ${LEVELS[difficulty].toLowerCase()} problem`}</button>{generating && <button type="button" onClick={ai.stop}>Stop generation</button>}</div>}
+    <section className="learn-panel logic-generation"><h2>More practice with the AI tutor</h2><p>Generate an additional problem at this difficulty. AI-made problems are not reviewed, so read them critically; the twelve core problems are available without AI.</p>
+      {!ai.configured ? <p className="learn-help">The <Link to="/ai-tutor">AI tutor</Link> is not connected yet.</p> : <div className="learn-actions"><button type="button" disabled={ai.busy || generating} onClick={generateProblem}>{generating ? 'Generating…' : `Generate ${LEVELS[difficulty].toLowerCase()} problem`}</button>{generating && <button type="button" onClick={ai.stop}>Stop</button>}</div>}
       {error && <p className="learn-error" role="alert">{error}</p>}
       {(generated.length > 0 || ['corrupt', 'unavailable'].includes(generatedSaveStatus)) && <SaveStatus status={generatedSaveStatus} retry={retryGenerated} />}
       {extras.length > 0 && <p className="learn-help">{extras.length} saved AI practice {extras.length === 1 ? 'problem' : 'problems'} at this difficulty.</p>}

@@ -58,7 +58,7 @@ export const RESOURCES = [
   { id: 'tool-essay-planner', title: 'Essay Planner', desc: 'Develop a question, argument, objection, response, and reasoned conclusion; save a draft on this device.', route: '/philosophy-basics', file: null, type: 'tool', section: 'Study tools', topic: 'Writing', tags: ['essay', 'plan', 'scaffold', 'export'] },
   { id: 'tool-logic-practice', title: 'Logic Practice', desc: 'Work through reviewed arguments, compare a solution, and revise your reasoning.', route: '/philosophy-fundamentals/logic-problems', file: null, type: 'tool', section: 'Study tools', topic: 'Logic', tags: ['logic', 'validity', 'soundness', 'practice'] },
   { id: 'tool-flashcards', title: 'Flashcards', desc: 'Retrieve ideas from memory and build a local review queue.', route: '/flashcards', file: null, type: 'tool', section: 'Study tools', topic: 'Revision', tags: ['revision', 'recall', 'retrieve', 'review'] },
-  { id: 'tool-local-ai', title: 'Local AI Study Assistant', desc: 'An optional free language model that runs on compatible devices after an explicit download.', route: '/local-ai', file: null, type: 'tool', section: 'Study tools', topic: 'AI', tags: ['AI', 'LLM', 'chat', 'help', 'browser', 'free'] },
+  { id: 'tool-ai-tutor', title: 'AI Tutor', desc: 'Ask a study question and get a short explanation and a question back. Free; answers can be wrong.', route: '/ai-tutor', file: null, type: 'tool', section: 'Study tools', topic: 'AI', tags: ['AI', 'tutor', 'chat', 'help', 'free'] },
 ];
 
 export const RESOURCE_BY_ID = Object.fromEntries(RESOURCES.map(resource => [resource.id, resource]));

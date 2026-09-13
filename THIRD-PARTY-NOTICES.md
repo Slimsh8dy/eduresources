@@ -2,7 +2,7 @@
 
 These notices apply to the software components used by this static application. They do not grant a new license to the site's original PDFs, audio recordings, quotations, external podcasts, or other teaching materials. Those materials remain subject to their respective owners' rights and existing terms. No blanket MIT or Apache license is being applied to this repository's content.
 
-The dependency versions are pinned in package-lock.json. The notices below were checked against the installed package files and bundled source map for this update (12 September 2026). Dependency upgrades require another notice review.
+The dependency versions are pinned in package-lock.json. The notices below were checked against the installed package files for this update (13 September 2026), when the browser-local WebLLM integration and its bundled MLC components were removed. Dependency upgrades require another notice review.
 
 ## Component inventory
 
@@ -12,31 +12,14 @@ The dependency versions are pinned in package-lock.json. The notices below were 
 | React Scheduler | React DOM runtime dependency | MIT; same Meta copyright/license below. |
 | React Router and React Router DOM | 7.18.3 | MIT; React Training, Remix Software, and Shopify notices below. |
 | Fuse.js | 7.5.0 | **Apache-2.0**, not MIT in this installed version. Copyright (c) 2026 Kiro Risk (http://kiro.me). |
-| WebLLM | @mlc-ai/web-llm 0.2.85 | Apache-2.0. Installed LICENSE reproduced below, including its bundled-component note. |
-| loglevel | WebLLM dependency and bundled source | MIT; Copyright (c) 2013 Tim Perry. |
 | cookie | React Router dependency | MIT; Roman Shtylman and Douglas Christopher Wilson notices below. |
 | set-cookie-parser | React Router dependency | MIT; Nathan Friedly notice below. |
-| MLC Web Runtime / TVM JS | Bundled inside the installed WebLLM distribution | Apache-2.0 headers attributed to the Apache Software Foundation are retained in bundled source; shared Apache text below. |
-| MLC Web Tokenizers / tokenizers-cpp | Bundled inside the installed WebLLM distribution | Apache-2.0; [upstream license](https://github.com/mlc-ai/tokenizers-cpp/blob/main/LICENSE). |
-| MLC Web XGrammar | Bundled inside the installed WebLLM distribution | Apache-2.0; [upstream license](https://github.com/mlc-ai/xgrammar/blob/main/LICENSE). |
-| Microsoft tslib helper code | Bundled directly and within the MLC runtime/tokenizer code | BSD Zero Clause permission text present in installed source; reproduced below. |
 
-WebLLM's installed source map identifies @mlc-ai/web-runtime, @mlc-ai/web-tokenizers, and @mlc-ai/web-xgrammar as bundled inputs, rather than separate dependencies installed in this project's node_modules. Their exact transitive package versions are not independently pinned by this application's lockfile; the containing WebLLM version is pinned. No unsupported claim that every MLC component uses the same license is intended. Embedded upstream copyright and license headers are retained.
+Build-only tools, such as Vite and its dependency tree, retain their own licenses in their installed packages. Those tools are not redistributed as application source under a new license. The Cloudflare Worker in `worker/` contains only this repository's own code and the shared catalogue/content modules; it is deployed with Cloudflare's tooling and is not redistributed with third-party code.
 
-The installed WebLLM distribution also contains Apache-licensed protocol definitions with the notice **Copyright 2024 OpenAI** in src/openai_api_protocols. The shared Apache 2.0 license below applies to those definitions. This application does not use an OpenAI inference service.
+## Model access
 
-Build-only tools, such as Vite and its dependency tree, retain their own licenses in their installed packages. Those tools are not redistributed as application source under a new license.
-
-## Optional downloaded model
-
-The model is not committed in this repository. Visitors may explicitly download the following MLC conversions of Qwen2.5 1.5B Instruct:
-
-- [MLC Qwen2.5-1.5B-Instruct-q4f16_1-MLC](https://huggingface.co/mlc-ai/Qwen2.5-1.5B-Instruct-q4f16_1-MLC)
-- [MLC Qwen2.5-1.5B-Instruct-q4f32_1-MLC](https://huggingface.co/mlc-ai/Qwen2.5-1.5B-Instruct-q4f32_1-MLC)
-
-The [original Qwen2.5-1.5B-Instruct license](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct/blob/main/LICENSE) is Apache-2.0 and identifies **Copyright 2024 Alibaba Cloud**. The MLC model cards identify these downloads as conversions of that original model. Preserve the model's own license and applicable upstream notices if you separately redistribute its files. This statement does not claim that all Qwen model sizes or versions share the same terms.
-
-Compiled model support is fetched from MLC's public model-library hosting. See [MLC LLM](https://github.com/mlc-ai/mlc-llm) and [WebLLM](https://github.com/mlc-ai/web-llm) for its source and accompanying license notices.
+No model is committed to or downloaded by this repository. The AI tutor sends questions to a Cloudflare Worker which uses Cloudflare Workers AI to run **Gemma 4 26B** (`@cf/google/gemma-4-26b-a4b-it`). Cloudflare's terms treat models available through Workers AI as third-party products; use of Gemma is subject to the [Gemma Terms of Use](https://ai.google.dev/gemma/docs/gemma_4_license) and its prohibited-use policy. Cloudflare's developer-platform terms state that it does not use customer content to train generative AI tools. Model output is generated text and is not endorsed by the site.
 
 ## License texts
 
@@ -96,33 +79,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### loglevel - MIT
-
-```text
-Copyright (c) 2013 Tim Perry
-
-Permission is hereby granted, free of charge, to any person
-obtaining a copy of this software and associated documentation
-files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-```
-
 ### cookie - MIT
 
 ```text
@@ -177,32 +133,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Microsoft tslib helpers - BSD Zero Clause
-
-This is the permission text embedded in the installed WebLLM source map and MLC helper code; it matches the [upstream tslib license](https://github.com/microsoft/tslib/blob/main/LICENSE.txt).
-
-```text
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-```
-
-### Apache License 2.0 - WebLLM, Fuse.js, applicable MLC code and Qwen model
+### Apache License 2.0 - Fuse.js
 
 Fuse.js notice: Copyright (c) 2026 Kiro Risk (http://kiro.me). All Rights Reserved. Apache Software License 2.0.
 
-Qwen model notice: Copyright 2024 Alibaba Cloud. Licensed under the Apache License, Version 2.0.
-
-The following is reproduced from the installed WebLLM LICENSE, including its appended bundled-component notice:
+The Apache License 2.0 text follows:
 
 ```text
 Apache License
@@ -406,14 +341,4 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-
-------------------------------------------------------------------------------------
-This product bundles various third-party components under other open source licenses.
-This section summarizes those components and their licenses. See licenses/
-for text of these licenses.
-
-Apache Software Foundation License 2.0
---------------------------------------
-
-src/openai_api_protocols
 ```

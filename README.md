@@ -1,6 +1,6 @@
 # Sapere aude - philosophy study resources
 
-A static philosophy, ethics, and theology site with searchable resources, an essay planner, flashcards, logic practice, original practice questions, and an optional browser-local AI assistant.
+A static philosophy, ethics, and theology site with searchable resources, an essay planner, flashcards, logic practice, original practice questions, and an optional AI tutor served by a small Cloudflare Worker.
 
 - Site: [slimsh8dy.github.io/eduresources](https://slimsh8dy.github.io/eduresources/)
 - Repository: [Slimsh8dy/eduresources](https://github.com/Slimsh8dy/eduresources)
@@ -21,7 +21,7 @@ npm run preview
 
 Open [http://localhost:4173/eduresources/](http://localhost:4173/eduresources/). The preview binds only to the local machine. It serves the generated static site; rebuild after editing source. Stop it with Ctrl+C. Do not open the HTML directly with a `file:` URL.
 
-No API key, cloud account, environment secret, paid inference server, or model installation on the developer's computer is required. `npm ci` needs an internet connection to fetch pinned dependencies. Browsing the site does not download the AI model until the visitor explicitly enables it.
+No API key, paid inference server, or model installation is required. `npm ci` needs an internet connection to fetch pinned dependencies. The AI tutor needs one free Cloudflare account to host the Worker in `worker/`; see below.
 
 ## What lives where
 
@@ -31,12 +31,13 @@ No API key, cloud account, environment secret, paid inference server, or model i
 | `app/src/resources/catalog.js` | Single resource catalogue with stable IDs, routes, topic metadata, and review notes. |
 | `app/src/resources/questionData.json` | Shared source for the browser question bank and printable practice pack. |
 | `app/src/learning/` | Planner, logic practice, flashcards, reviewed content, and local saved-state helpers. |
-| `app/src/ai/` | Lazy WebLLM worker, compatibility/loading controls, and local study assistant. |
+| `app/src/ai/` | Tutor page, the browser client for the Worker, grounding (catalogue and reviewed excerpts), and `config.js` with the Worker URL. |
+| `worker/` | The Cloudflare Worker that answers tutor questions with Workers AI. `worker/dist/tutor.js` is the single-file bundle for pasting into the Cloudflare dashboard. |
 | `dist/` | Intermediate Vite build, not the GitHub Pages publishing root. |
 | Root `index.html` and `assets/` | Generated files committed for static GitHub Pages hosting. Do not hand-edit these. |
 | `resources/` | Existing PDFs and WAV audio, plus the new original printable practice pack. |
 | `scripts/publish-build.mjs` | Copies only the new generated HTML and assets into the publishing root. |
-| `tests/` | Content, state, AI-controller, catalogue, and original-asset protection checks. |
+| `tests/` | Content, state, tutor client, Worker, catalogue, and original-asset protection checks. |
 | `docs/CONTENT-REVIEW.md` | Corrections, provenance limitations, and caveats in legacy materials. |
 
 The application uses hash routes (for example, `#/flashcards`) so direct links work on static hosting. The configured base URL is `/eduresources/`.
@@ -55,28 +56,22 @@ Tests preserve the original 58 PDF/audio filenames, the complete tracked resourc
 
 Use a clean checkout and identify the exact upgrade commit in `git log`. Revert that commit with `git revert COMMIT_SHA`, resolve and review any conflicts, and publish the resulting revert commit through the normal workflow. A merge commit requires selecting the correct mainline parent; review its history before reverting it. This preserves history and restores the prior generated page without a force push. Do not use a hard reset to discard unrelated work. Always check the restored live site afterward.
 
-## Use the free local AI
+## The AI tutor
 
-“Local” means the model runs on each visitor's compatible device. GitHub Pages serves static files; it does not run an AI server. The integration uses WebLLM 0.2.85 with **Qwen2.5 1.5B Instruct**.
+The tutor page sends a question to a small Cloudflare Worker (`worker/`). The Worker adds the relevant catalogue descriptions and reviewed excerpts, asks the **Gemma 4 26B** model through Cloudflare Workers AI, and streams the answer back. The browser never holds a key, and no key is stored anywhere in this repository: the Worker reaches the model through a binding. Cloudflare's free plan includes 10,000 Workers AI "neurons" a day, shared by every visitor; when they are used up the tutor says so and the rest of the site is unaffected. The Worker also allows only a few questions a minute per visitor (three), with a separate ceiling per network address so a classroom is not counted as one person.
 
-1. Open **Local AI** in the site navigation.
-2. Read the download and compatibility notice. Select **Enable local AI - download model** only when ready for the download.
-3. Wait for the model to become ready, then ask one focused study question. Other study tools remain usable without AI.
+### Deploy the Worker (once)
 
-The first model download is approximately **0.9 GB**; the compatibility variant may be larger. A compatible WebGPU browser, working graphics acceleration, sufficient memory, and available browser storage are needed. Not every browser, phone, or computer can run it. Loading can take several minutes and graphics performance varies; a successful compatibility check does not guarantee enough memory for every task.
+1. Create a free account at https://dash.cloudflare.com/sign-up.
+2. In the dashboard choose **Workers & Pages → Create → Start with Hello World**, name it `eduresources-tutor`, and deploy the placeholder.
+3. Open the Worker, choose **Edit code**, replace the contents of the editor with `worker/dist/tutor.js` from this repository, and **Deploy**.
+4. In the Worker's **Settings → Bindings**, add a **Workers AI** binding with the variable name `AI`. Optionally add a **Rate limiting** binding named `LIMITER` (3 requests per 60 seconds); without it the Worker falls back to a best-effort per-visitor limit of its own. Visitors are told apart by a random id their browser keeps (not an account), so a whole class behind one school address is not treated as one visitor; a separate ceiling of 40 requests a minute applies per address.
+5. Optional: under **Settings → Variables**, add `ALLOWED_ORIGINS` (comma-separated site origins) if the site ever moves; `https://slimsh8dy.github.io` is allowed by default.
+6. Copy the Worker's URL (`https://eduresources-tutor.<your-subdomain>.workers.dev`) into `DEFAULT_ENDPOINT` in `app/src/ai/config.js`, rebuild, and publish the site.
 
-The default model is `Qwen2.5-1.5B-Instruct-q4f16_1-MLC`. Where `shader-f16` is unavailable, the integration selects `Qwen2.5-1.5B-Instruct-q4f32_1-MLC`. Model weights are downloaded from Hugging Face, and compiled model support comes from MLC's public hosting; the repository does not contain the model weights.
+Developers can instead run `npx wrangler deploy` inside `worker/` (it reads `worker/wrangler.jsonc`). After changing anything under `worker/src/`, run `npm run build:worker` to regenerate the single-file bundle.
 
-- **Cancel loading** or **Stop answer** stops the worker. Enable it again to retry; completed cached downloads can be reused.
-- **Unload AI from memory** releases graphics memory while keeping the model download cached.
-- **Remove downloaded model** unloads and removes the supported model variants from the app's model cache. It does not delete the planner draft or study progress.
-- **Clear this conversation** removes the visible chat on the current page. Chat is held in page memory rather than saved as study progress.
-
-The browser may evict cached files, and private browsing or blocked storage can prevent reuse. A later visit may require another download. This is not an offline-first app: do not assume the complete site and every asset will work without a connection.
-
-There is no per-message inference fee or automatic paid fallback. Downloads still use data, electricity, device resources, and contact the external file hosts. Questions are processed in the browser, not sent to a remote inference API. Do not include sensitive personal information. Model output can be wrong; check claims against course materials and primary sources. It does not officially grade work or claim to have read all linked PDFs. Related links come from the site's catalogue rather than invented model URLs.
-
-Model information: [original Qwen model and license](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct/blob/main/LICENSE), [MLC f16 model](https://huggingface.co/mlc-ai/Qwen2.5-1.5B-Instruct-q4f16_1-MLC), [MLC f32 model](https://huggingface.co/mlc-ai/Qwen2.5-1.5B-Instruct-q4f32_1-MLC). See `app/src/ai/README.md` for the integration contract and real-browser verification checklist.
+Model information: [Gemma 4 on Workers AI](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/) and the [Gemma Terms of Use](https://ai.google.dev/gemma/docs/gemma_4_license). Cloudflare states that it does not use Workers AI content to train models; questions are still processed on Cloudflare's servers, so the page asks visitors not to include personal information. Model output can be wrong; check claims against course materials and primary sources. The tutor does not grade work and has not read the linked PDFs; related links come from the site's catalogue rather than from the model.
 
 ## Saved work and practice questions
 
