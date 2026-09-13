@@ -110,11 +110,12 @@ test('a used-up daily allowance becomes a clear quota message', async () => {
   assert.equal(classifyUpstreamError(new Error('socket hang up')).code, 'upstream');
 });
 
-test('logic generation requests structured output and falls back if the model rejects it', async () => {
+test('logic generation asks the model quietly, retries without the non-standard knob, and returns the JSON text', async () => {
   const env = { AI: fakeAI((model, options, call) => {
-    if (call === 1) { assert.equal(options.response_format.type, 'json_schema'); throw new Error('response_format not supported for this model'); }
-    assert.equal(options.response_format, undefined);
-    return { response: { title: 'A gate', argument: ['P1: a', 'P2: b', 'C: c'], question: 'q', hint: 'h', solution: 's' } };
+    if (call === 1) { assert.equal(options.reasoning_effort, 'low'); assert.deepEqual(options.chat_template_kwargs, { enable_thinking: false }); assert.equal(options.response_format, undefined); throw new Error('Unknown parameter: chat_template_kwargs'); }
+    assert.equal(options.chat_template_kwargs, undefined);
+    assert.equal(options.reasoning_effort, 'low');
+    return { choices: [{ message: { content: '{"title":"A gate","argument":["P1: a","P2: b","C: c"],"question":"q","hint":"h","solution":"s"}', reasoning_content: 'private' } }] };
   }) };
   const response = await handleRequest(post('/logic', { difficulty: 'easy' }), env);
   assert.equal(response.status, 200);
@@ -150,7 +151,7 @@ test('a stream with no answer text ends in an error event carrying a diagnostic,
 });
 
 test('probe performs one small real call and reports the shape or the error text', async () => {
-  const good = await handleRequest(new Request('https://tutor.example/probe', { headers: { Origin: ORIGIN } }), { AI: fakeAI((model, options) => { assert.equal(options.max_completion_tokens, 400); return { choices: [{ message: { content: 'OK' } }] }; }) });
+  const good = await handleRequest(new Request('https://tutor.example/probe', { headers: { Origin: ORIGIN } }), { AI: fakeAI((model, options) => { assert.equal(options.max_completion_tokens, 400); assert.equal(options.reasoning_effort, 'low'); return { choices: [{ message: { content: 'OK' } }] }; }) });
   const body = await good.json();
   assert.equal(body.ok, true);
   assert.equal(body.text, 'OK');

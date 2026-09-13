@@ -123,6 +123,18 @@ export function buildLogicRequest(difficulty) {
   };
 }
 
+/** Gemma 4 thinks at length before answering, and the thinking counts against the token budget.
+ *  Two knobs exist across model families; each family ignores the other's, so both are sent.
+ *  If the platform rejects the non-standard one, the call is retried without it. */
+export const QUIET = Object.freeze({ reasoning_effort: 'low', chat_template_kwargs: { enable_thinking: false } });
+export async function runQuietly(ai, model, options) {
+  try { return await ai.run(model, { ...options, ...QUIET }); }
+  catch (error) {
+    if (!/chat_template_kwargs|additional propert|unknown|unexpected|invalid|schema/i.test(String(error?.message || ''))) throw error;
+    return ai.run(model, { ...options, reasoning_effort: QUIET.reasoning_effort });
+  }
+}
+
 /** Pull the text out of whichever shape Workers AI returns for a non-streamed call. */
 export function extractText(result) {
   if (result == null) return '';
@@ -251,7 +263,7 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
     const address = request.headers.get('CF-Connecting-IP') || '';
     if (!(await withinLimit(address ? `ip:${address}` : '', env, deps, LIMITS.perAddress, false))) return json({ ok: false, error: 'rate_limited' }, 429, cors);
     try {
-      const result = await env.AI.run(model, { messages: [{ role: 'user', content: 'Reply with exactly the single word: OK' }], max_completion_tokens: LIMITS.probeTokens });
+      const result = await runQuietly(env.AI, model, { messages: [{ role: 'user', content: 'Reply with exactly the single word: OK' }], max_completion_tokens: LIMITS.probeTokens });
       return json({ ok: true, model, text: extractText(result).slice(0, 200), shape: detailOf(result) }, 200, cors);
     } catch (error) {
       return json({ ok: false, model, error: detailOf(error) }, 502, cors);
@@ -275,13 +287,9 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
     try { prepared = buildLogicRequest(String(body.difficulty || '')); }
     catch (error) { return json({ error: 'bad_request', message: error.message }, 400, cors); }
     try {
-      let result;
-      try { result = await env.AI.run(model, { messages: prepared.messages, max_completion_tokens: prepared.max_tokens, temperature: 0.4, response_format: prepared.response_format }); }
-      catch (error) {
-        // Some models reject structured output; the site validates the JSON anyway.
-        if (/quota|neuron|daily|exceed|3040|rate ?limit|too many/i.test(String(error?.message || ''))) throw error;
-        result = await env.AI.run(model, { messages: prepared.messages, max_completion_tokens: prepared.max_tokens, temperature: 0.4 });
-      }
+      // Structured-output mode is not used: with this model it stalls in its reasoning phase.
+      // The prompt asks for a bare JSON object and the site validates it strictly.
+      const result = await runQuietly(env.AI, model, { messages: prepared.messages, max_completion_tokens: prepared.max_tokens, temperature: 0.4 });
       const text = stripThinking(extractText(result)).trim();
       if (!text) throw Object.assign(new Error('The model returned no text.'), { detail: detailOf(result) });
       return json({ problem: text }, 200, cors);
@@ -295,7 +303,7 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
   if (!question) return json({ error: 'bad_request', message: 'Enter a question first.' }, 400, cors);
   const prepared = buildAskRequest(question);
   try {
-    const upstream = await env.AI.run(model, { messages: prepared.messages, max_completion_tokens: LIMITS.answerTokens, temperature: 0.3, stream: true });
+    const upstream = await runQuietly(env.AI, model, { messages: prepared.messages, max_completion_tokens: LIMITS.answerTokens, temperature: 0.3, stream: true });
     if (!(upstream instanceof ReadableStream)) {
       const text = stripThinking(extractText(upstream)).trim();
       if (!text) throw Object.assign(new Error('The model returned no text.'), { detail: detailOf(upstream) });

@@ -1205,6 +1205,27 @@ function buildLogicRequest(difficulty) {
 		}
 	};
 }
+/** Gemma 4 thinks at length before answering, and the thinking counts against the token budget.
+*  Two knobs exist across model families; each family ignores the other's, so both are sent.
+*  If the platform rejects the non-standard one, the call is retried without it. */
+var QUIET = Object.freeze({
+	reasoning_effort: "low",
+	chat_template_kwargs: { enable_thinking: false }
+});
+async function runQuietly(ai, model, options) {
+	try {
+		return await ai.run(model, {
+			...options,
+			...QUIET
+		});
+	} catch (error) {
+		if (!/chat_template_kwargs|additional propert|unknown|unexpected|invalid|schema/i.test(String(error?.message || ""))) throw error;
+		return ai.run(model, {
+			...options,
+			reasoning_effort: QUIET.reasoning_effort
+		});
+	}
+}
 /** Pull the text out of whichever shape Workers AI returns for a non-streamed call. */
 function extractText(result) {
 	if (result == null) return "";
@@ -1369,7 +1390,7 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 			error: "rate_limited"
 		}, 429, cors);
 		try {
-			const result = await env.AI.run(model, {
+			const result = await runQuietly(env.AI, model, {
 				messages: [{
 					role: "user",
 					content: "Reply with exactly the single word: OK"
@@ -1430,22 +1451,11 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 			}, 400, cors);
 		}
 		try {
-			let result;
-			try {
-				result = await env.AI.run(model, {
-					messages: prepared.messages,
-					max_completion_tokens: prepared.max_tokens,
-					temperature: .4,
-					response_format: prepared.response_format
-				});
-			} catch (error) {
-				if (/quota|neuron|daily|exceed|3040|rate ?limit|too many/i.test(String(error?.message || ""))) throw error;
-				result = await env.AI.run(model, {
-					messages: prepared.messages,
-					max_completion_tokens: prepared.max_tokens,
-					temperature: .4
-				});
-			}
+			const result = await runQuietly(env.AI, model, {
+				messages: prepared.messages,
+				max_completion_tokens: prepared.max_tokens,
+				temperature: .4
+			});
 			const text = stripThinking(extractText(result)).trim();
 			if (!text) throw Object.assign(/* @__PURE__ */ new Error("The model returned no text."), { detail: detailOf(result) });
 			return json({ problem: text }, 200, cors);
@@ -1465,7 +1475,7 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 	}, 400, cors);
 	const prepared = buildAskRequest(question);
 	try {
-		const upstream = await env.AI.run(model, {
+		const upstream = await runQuietly(env.AI, model, {
 			messages: prepared.messages,
 			max_completion_tokens: LIMITS.answerTokens,
 			temperature: .3,
