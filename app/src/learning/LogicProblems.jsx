@@ -1,8 +1,6 @@
 import React from 'react';
-import {Link} from 'react-router-dom';
-import {useAI} from '../ai/AiProvider';
 import {LOGIC_PROBLEMS} from './content.js';
-import {STORAGE_KEYS, isLogicAttempts, validateGeneratedProblem, isGeneratedProblemList} from './state.mjs';
+import {STORAGE_KEYS, isLogicAttempts} from './state.mjs';
 import {SaveStatus, SourceLinks, useDeviceSave} from './useDeviceSave.jsx';
 import './learning.css';
 
@@ -17,9 +15,8 @@ function LogicCard({problem, attempt, update}) {
   const checks = Array.isArray(attempt.checks) ? attempt.checks : [];
   function toggleCheck(index) { update({checks: checks.includes(index) ? checks.filter(value => value !== index) : [...checks, index]}); }
   return <article className="learn-panel logic-card" aria-labelledby={`${id}-heading`}>
-    <div className="learn-between"><p className="learn-eyebrow">{problem.isAI ? 'AI practice' : `Problem ${problem.id}`} · {LEVELS[problem.difficulty]}</p><span className="learn-badge">{attempt.revision.trim() ? 'Revision drafted' : attempt.revealed ? 'Worked example opened' : attempt.answer.trim() ? 'Answer drafted' : 'Not started'}</span></div>
+    <div className="learn-between"><p className="learn-eyebrow">Problem {problem.id} · {LEVELS[problem.difficulty]}</p><span className="learn-badge">{attempt.revision.trim() ? 'Revision drafted' : attempt.revealed ? 'Worked example opened' : attempt.answer.trim() ? 'Answer drafted' : 'Not started'}</span></div>
     <h2 id={`${id}-heading`}>{problem.title}</h2>
-    {problem.isAI && <p className="learn-notice">AI-generated practice: check the reasoning. This example has not received the editorial review applied to the 12 core problems.</p>}
     <div className="logic-argument" aria-label="Argument">{problem.argument.map((line, index) => <p key={index}>{line}</p>)}</div>
     <p className="logic-question">{problem.question}</p>
     <button type="button" aria-expanded={hintOpen} aria-controls={`${id}-hint`} onClick={() => setHintOpen(value => !value)}>{hintOpen ? 'Hide hint' : 'Show hint'}</button>
@@ -36,38 +33,15 @@ function LogicCard({problem, attempt, update}) {
 export default function LogicProblems() {
   const [difficulty, setDifficulty] = React.useState('easy');
   const [attempts, setAttempts, saveStatus, retry] = useDeviceSave(STORAGE_KEYS.logic, {}, isLogicAttempts);
-  const [generated, setGenerated, generatedSaveStatus, retryGenerated] = useDeviceSave('eduresources.learning.generated.v1', [], isGeneratedProblemList);
-  const [error, setError] = React.useState('');
-  const [generating, setGenerating] = React.useState(false);
-  const ai = useAI();
   const core = LOGIC_PROBLEMS.filter(problem => problem.difficulty === difficulty);
-  const extras = generated.filter(problem => problem.difficulty === difficulty);
   const started = LOGIC_PROBLEMS.filter(problem => attempts[problem.id]?.answer.trim() || attempts[problem.id]?.revision.trim()).length;
   const revised = LOGIC_PROBLEMS.filter(problem => attempts[problem.id]?.revision.trim()).length;
   function updateAttempt(id, changes) { setAttempts(current => ({...current, [id]: {...EMPTY_ATTEMPT, ...current[id], ...changes}})); }
-  async function generateProblem() {
-    if (!ai.configured || ai.busy || generating) return;
-    setGenerating(true); setError('');
-    try {
-      const raw = await ai.generateLogicProblem(difficulty);
-      const checked = validateGeneratedProblem(raw);
-      const problem = {...checked, id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, difficulty, isAI: true};
-      setGenerated(current => [...current, problem]);
-    } catch (problem) { setError(problem?.name === 'AbortError' ? 'Generation stopped. Your saved work is unchanged.' : (problem?.message || 'The problem could not be generated. Please try again.')); }
-    finally { setGenerating(false); }
-  }
   return <section className="learning-tool logic-tool">
     <header className="learn-header"><p className="learn-eyebrow">ANALYSE · COMPARE · REVISE</p><h1>Logic Problem Solver</h1><p>Practise with 12 reviewed problems. Test the inference, examine the premises, then compare and improve your explanation.</p></header>
     <SaveStatus status={saveStatus} retry={retry} />
     <p className="learn-help">{started} of 12 core problems have your notes · {revised} have a revision. Progress records your work, not a grade.</p>
     <div className="learn-actions logic-levels" role="group" aria-label="Problem difficulty">{Object.entries(LEVELS).map(([value, label]) => <button type="button" key={value} aria-pressed={difficulty === value} onClick={() => setDifficulty(value)}>{label} ({LOGIC_PROBLEMS.filter(problem => problem.difficulty === value).length})</button>)}</div>
     {core.map(problem => <LogicCard key={problem.id} problem={problem} attempt={attempts[problem.id] || EMPTY_ATTEMPT} update={changes => updateAttempt(problem.id, changes)} />)}
-    <section className="learn-panel logic-generation"><h2>More practice with the AI tutor</h2><p>Generate an additional problem at this difficulty. AI-made problems are not reviewed, so read them critically; the twelve core problems are available without AI.</p>
-      {!ai.configured ? <p className="learn-help">The <Link to="/ai-tutor">AI tutor</Link> is not connected yet.</p> : <div className="learn-actions"><button type="button" disabled={ai.busy || generating} onClick={generateProblem}>{generating ? 'Generating…' : `Generate ${LEVELS[difficulty].toLowerCase()} problem`}</button>{generating && <button type="button" onClick={ai.stop}>Stop</button>}</div>}
-      {error && <p className="learn-error" role="alert">{error}</p>}
-      {(generated.length > 0 || ['corrupt', 'unavailable'].includes(generatedSaveStatus)) && <SaveStatus status={generatedSaveStatus} retry={retryGenerated} />}
-      {extras.length > 0 && <p className="learn-help">{extras.length} saved AI practice {extras.length === 1 ? 'problem' : 'problems'} at this difficulty.</p>}
-    </section>
-    {extras.map(problem => <LogicCard key={problem.id} problem={problem} attempt={attempts[problem.id] || EMPTY_ATTEMPT} update={changes => updateAttempt(problem.id, changes)} />)}
   </section>;
 }

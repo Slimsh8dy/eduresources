@@ -1,5 +1,7 @@
 # Release verification — Cloudflare tutor and minimal interface (13 September 2026)
 
+Decision (13 Sep, late): AI-generated logic problems were removed. The AI tutor exists only to clarify a pupil's question; the twelve reviewed logic problems are the whole set. The Worker exposes `POST /ask` (and `GET /health`, `GET /probe`) only.
+
 Built in a fresh clone of `gh-pages` on a review branch. The interface was restyled (one ground, hairline rules, ink only; no card boxes; one filled primary control per view) without removing any feature. The browser-local WebLLM tutor was replaced by a Cloudflare Worker that calls Workers AI (`@cf/google/gemma-4-26b-a4b-it`) with the grounding prompt built server-side.
 
 ## Automated checks
@@ -14,7 +16,6 @@ Built in a fresh clone of `gh-pages` on a review branch. The interface was resty
 - A question on the tutor page streams word by word, the hidden reasoning block is never shown, and the related-resource links come from the catalogue.
 - A fourth request within a minute from the same address is refused with the fair-use message; the fifth after the window succeeds.
 - The daily-allowance error from the model becomes the plain "used up today's free allowance" message.
-- The logic page generates an AI problem through the Worker; it is validated and labelled as unchecked practice.
 - No console errors on the home, topic, tutor, logic, essay and search views at 1280 px and 400 px widths.
 
 ## Not verified here

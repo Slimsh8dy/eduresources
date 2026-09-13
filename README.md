@@ -1,6 +1,6 @@
 # Sapere aude - philosophy study resources
 
-A static philosophy, ethics, and theology site with searchable resources, an essay planner, flashcards, logic practice, original practice questions, and an optional AI tutor served by a small Cloudflare Worker.
+A static philosophy, ethics, and theology site with searchable resources, an essay planner, flashcards, logic practice, original practice questions, and an optional AI tutor served by a small Cloudflare Worker. AI is used for one purpose only: answering a pupil's study question on the tutor page. All study content is reviewed and fixed; nothing on the site is AI-generated.
 
 - Site: [slimsh8dy.github.io/eduresources](https://slimsh8dy.github.io/eduresources/)
 - Repository: [Slimsh8dy/eduresources](https://github.com/Slimsh8dy/eduresources)

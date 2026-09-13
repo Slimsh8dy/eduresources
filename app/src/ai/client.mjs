@@ -131,24 +131,6 @@ export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs =
     }
   }
 
-  /** Returns the raw JSON text of a generated logic problem; the caller validates it. */
-  async function generateLogicProblem(difficulty) {
-    const run = begin();
-    try {
-      const response = await post('/logic', { difficulty }, run.signal);
-      const body = await response.json();
-      if (typeof body.problem !== 'string' || !body.problem.trim()) throw Object.assign(new Error(FALLBACK_MESSAGES.bad), { name: 'TutorError' });
-      run.end();
-      settle(null);
-      return body.problem;
-    } catch (error) {
-      const failure = run.signal.aborted && run.signal.reason?.name === 'TimeoutError' ? run.signal.reason : error;
-      run.end();
-      settle(failure);
-      throw failure;
-    }
-  }
-
   function stop() {
     if (!controller) return;
     controller.abort(abortError());
@@ -157,7 +139,7 @@ export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs =
   return {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    ask, generateLogicProblem, stop,
+    ask, stop,
     dispose() { stop(); listeners.clear(); },
   };
 }

@@ -83,16 +83,6 @@ test('a timeout is reported as a recoverable error', async () => {
   client.dispose();
 });
 
-test('logic generation returns the raw JSON text for the site to validate', async () => {
-  const client = createTutorClient({ endpoint: 'https://tutor.example', fetch: async (url, init) => {
-    assert.equal(url, 'https://tutor.example/logic');
-    assert.deepEqual(JSON.parse(init.body), { difficulty: 'easy' });
-    return jsonResponse({ problem: '{"title":"x"}' });
-  } });
-  assert.equal(await client.generateLogicProblem('easy'), '{"title":"x"}');
-  client.dispose();
-});
-
 test('browser id is stable per storage and survives storage failures', () => {
   const memory = new Map();
   const storage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value) };

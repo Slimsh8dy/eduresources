@@ -1,10 +1,10 @@
 // EduResources tutor — Cloudflare Worker logic.
 // The Worker owns the prompts and grounding, so the browser only ever sends a question.
+// AI is used for one thing only: tutoring replies to a pupil's question (POST /ask).
 // Nothing here stores a key: the model is reached through the Workers AI binding (env.AI).
 import { RESOURCES } from '../../app/src/resources/catalog.js';
 import { REVIEWED_EXCERPTS } from '../../app/src/ai/excerpts.js';
 import { studyContext } from '../../app/src/ai/grounding.mjs';
-import { buildLogicGenerationRequest, LOGIC_PROBLEM_SCHEMA } from '../../app/src/learning/state.mjs';
 
 export const DEFAULT_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 export const DEFAULT_ORIGINS = ['https://slimsh8dy.github.io', 'http://localhost:4173', 'http://127.0.0.1:4173'];
@@ -13,7 +13,6 @@ export const LIMITS = Object.freeze({
   bodyBytes: 8 * 1024,
   // Gemma 4 reasons privately before it answers and that reasoning counts against the budget.
   answerTokens: 1600,
-  logicTokens: 4000,
   probeTokens: 400,
   perVisitor: { limit: 3, period: 60 },  // per browser (client id); the LIMITER binding carries the same limit when present
   perAddress: { limit: 40, period: 60 }, // per network address, so a whole classroom behind one address is not treated as one visitor
@@ -108,18 +107,6 @@ export function buildAskRequest(question) {
   return {
     resources,
     messages: [{ role: 'system', content: context.system.slice(0, 8000) }, { role: 'user', content: question }],
-  };
-}
-
-export function buildLogicRequest(difficulty) {
-  const request = buildLogicGenerationRequest(difficulty); // throws for an unknown difficulty
-  return {
-    messages: [
-      { role: 'system', content: request.system + '\nReturn ONLY a JSON object that follows the required schema. No Markdown fences, no text outside the object.' },
-      { role: 'user', content: request.prompt },
-    ],
-    max_tokens: LIMITS.logicTokens,
-    response_format: { type: 'json_schema', json_schema: LOGIC_PROBLEM_SCHEMA },
   };
 }
 
@@ -269,7 +256,7 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
       return json({ ok: false, model, error: detailOf(error) }, 502, cors);
     }
   }
-  if (request.method !== 'POST' || !['/ask', '/logic'].includes(url.pathname)) return json({ error: 'not_found', message: 'Not found.' }, 404, cors);
+  if (request.method !== 'POST' || url.pathname !== '/ask') return json({ error: 'not_found', message: 'Not found.' }, 404, cors);
   if (!cors['Access-Control-Allow-Origin'] && request.headers.get('Origin')) return json({ error: 'forbidden', message: 'This origin may not use the tutor.' }, 403, cors);
   if (!env.AI) return json({ error: 'unconfigured', message: MESSAGES.unconfigured }, 503, cors);
 
@@ -281,23 +268,6 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
   const browser = clientId(request) || (address ? `addr:${address}` : '');
   const allowed = await withinLimit(browser, env, deps) && await withinLimit(address ? `ip:${address}` : '', env, deps, LIMITS.perAddress, false);
   if (!allowed) return json({ error: 'rate_limited', message: MESSAGES.rateLimited }, 429, { ...cors, 'Retry-After': '60' });
-
-  if (url.pathname === '/logic') {
-    let prepared;
-    try { prepared = buildLogicRequest(String(body.difficulty || '')); }
-    catch (error) { return json({ error: 'bad_request', message: error.message }, 400, cors); }
-    try {
-      // Structured-output mode is not used: with this model it stalls in its reasoning phase.
-      // The prompt asks for a bare JSON object and the site validates it strictly.
-      const result = await runQuietly(env.AI, model, { messages: prepared.messages, max_completion_tokens: prepared.max_tokens, temperature: 0.4 });
-      const text = stripThinking(extractText(result)).trim();
-      if (!text) throw Object.assign(new Error('The model returned no text.'), { detail: detailOf(result) });
-      return json({ problem: text }, 200, cors);
-    } catch (error) {
-      const failure = classifyUpstreamError(error);
-      return json({ error: failure.code, message: failure.message, detail: error?.detail || detailOf(error) }, failure.status, cors);
-    }
-  }
 
   const question = cleanQuestion(body.question);
   if (!question) return json({ error: 'bad_request', message: 'Enter a question first.' }, 400, cors);

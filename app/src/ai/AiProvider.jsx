@@ -16,7 +16,7 @@ export function AiProvider({ children }) {
     return () => { unsubscribe(); client.stop(); };
   }, [client]);
 
-  return <AiContext.Provider value={{ ...snapshot, ask: client.ask, generateLogicProblem: client.generateLogicProblem, stop: client.stop }}>
+  return <AiContext.Provider value={{ ...snapshot, ask: client.ask, stop: client.stop }}>
     {children}
   </AiContext.Provider>;
 }

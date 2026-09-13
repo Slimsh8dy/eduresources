@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleRequest, createThinkFilter, classifyUpstreamError, buildAskRequest, buildLogicRequest, extractText, chunkText, stripThinking, DEFAULT_MODEL } from '../worker/src/tutor.js';
+import { handleRequest, createThinkFilter, classifyUpstreamError, buildAskRequest, extractText, chunkText, stripThinking, DEFAULT_MODEL } from '../worker/src/tutor.js';
 
 const ORIGIN = 'https://slimsh8dy.github.io';
 const encoder = new TextEncoder();
@@ -110,28 +110,13 @@ test('a used-up daily allowance becomes a clear quota message', async () => {
   assert.equal(classifyUpstreamError(new Error('socket hang up')).code, 'upstream');
 });
 
-test('logic generation asks the model quietly, retries without the non-standard knob, and returns the JSON text', async () => {
-  const env = { AI: fakeAI((model, options, call) => {
-    if (call === 1) { assert.equal(options.reasoning_effort, 'low'); assert.deepEqual(options.chat_template_kwargs, { enable_thinking: false }); assert.equal(options.response_format, undefined); throw new Error('Unknown parameter: chat_template_kwargs'); }
-    assert.equal(options.chat_template_kwargs, undefined);
-    assert.equal(options.reasoning_effort, 'low');
-    return { choices: [{ message: { content: '{"title":"A gate","argument":["P1: a","P2: b","C: c"],"question":"q","hint":"h","solution":"s"}', reasoning_content: 'private' } }] };
-  }) };
-  const response = await handleRequest(post('/logic', { difficulty: 'easy' }), env);
-  assert.equal(response.status, 200);
-  const body = await response.json();
-  assert.equal(JSON.parse(body.problem).title, 'A gate');
-  assert.equal(env.AI.calls.length, 2);
-  assert.equal((await handleRequest(post('/logic', { difficulty: 'impossible' }), env)).status, 400);
-  assert.throws(() => buildLogicRequest('nope'), /difficulty/);
-  assert.equal(extractText({ choices: [{ message: { content: 'hi' } }] }), 'hi');
-});
-
 test('health reports the model, and a deployment without the AI binding says so', async () => {
   const health = await handleRequest(new Request('https://tutor.example/health', { headers: { Origin: ORIGIN } }), { AI: fakeAI(() => 'x') });
   assert.deepEqual(await health.json(), { ok: true, model: DEFAULT_MODEL, configured: true });
   const missing = await handleRequest(post('/ask', { question: 'q' }), {});
   assert.equal(missing.status, 503);
+  assert.equal((await handleRequest(post('/logic', { difficulty: 'easy' }), { AI: fakeAI(() => 'x') })).status, 404, 'AI is for tutoring only; no generation endpoint');
+  assert.equal(extractText({ choices: [{ message: { content: 'hi' } }] }), 'hi');
   assert.equal(buildAskRequest('Kant duty').resources.length > 0, true);
 });
 
