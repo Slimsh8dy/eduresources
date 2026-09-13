@@ -1,5 +1,5 @@
 const ignored = new Set(['a', 'an', 'and', 'are', 'can', 'do', 'for', 'how', 'i', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'please', 'the', 'to', 'what', 'where', 'with', 'you', 'find', 'explain', 'about']);
-const words = value => String(value || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').match(/[a-z0-9]+/g) || [];
+const words = value => String(value || '').toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').match(/[a-z0-9]+/g) || [];
 const queryTokens = question => [...new Set(words(question).filter(word => !ignored.has(word) && word.length > 1))];
 
 export function relatedResources(question, resources = [], limit = 4) {

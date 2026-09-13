@@ -97,7 +97,8 @@ export function clientId(request) {
 export function cleanQuestion(value) {
   if (typeof value !== 'string') return '';
   // Drop control characters (newlines and tabs are kept), then trim and cap the length.
-  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, LIMITS.questionChars);
+  const keep = ch => { const code = ch.charCodeAt(0); return !(code < 32 && code !== 9 && code !== 10 && code !== 13) && code !== 127; };
+  return Array.from(value).filter(keep).join('').trim().slice(0, LIMITS.questionChars);
 }
 
 export function buildAskRequest(question) {

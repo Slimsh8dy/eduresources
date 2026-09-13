@@ -925,7 +925,7 @@ var ignored = /* @__PURE__ */ new Set([
 	"explain",
 	"about"
 ]);
-var words = (value) => String(value || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").match(/[a-z0-9]+/g) || [];
+var words = (value) => String(value || "").toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "").match(/[a-z0-9]+/g) || [];
 var queryTokens = (question) => [...new Set(words(question).filter((word) => !ignored.has(word) && word.length > 1))];
 function relatedResources(question, resources = [], limit = 4) {
 	const tokens = queryTokens(question);
@@ -1163,7 +1163,11 @@ function clientId(request) {
 }
 function cleanQuestion(value) {
 	if (typeof value !== "string") return "";
-	return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim().slice(0, LIMITS.questionChars);
+	const keep = (ch) => {
+		const code = ch.charCodeAt(0);
+		return !(code < 32 && code !== 9 && code !== 10 && code !== 13) && code !== 127;
+	};
+	return Array.from(value).filter(keep).join("").trim().slice(0, LIMITS.questionChars);
 }
 function buildAskRequest(question) {
 	const context = studyContext(question, RESOURCES, REVIEWED_EXCERPTS);
