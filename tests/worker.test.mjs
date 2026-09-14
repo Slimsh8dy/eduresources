@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleRequest, createThinkFilter, classifyUpstreamError, buildAskRequest, extractText, chunkText, stripThinking, DEFAULT_MODEL, CANDIDATE_MODELS, requestOptions, runQuietly, outcomeOf, attemptsFor, responsesShape } from '../worker/src/tutor.js';
+import { handleRequest, createThinkFilter, classifyUpstreamError, buildAskRequest, extractText, chunkText, stripThinking, DEFAULT_MODEL, CANDIDATE_MODELS, requestOptions, runQuietly, outcomeOf, attemptsFor, responsesShape, collectStream, streamModeFor } from '../worker/src/tutor.js';
 
 const ORIGIN = 'https://slimsh8dy.github.io';
 const encoder = new TextEncoder();
@@ -30,12 +30,12 @@ test('CORS: the site origin is allowed, an unknown origin is refused, preflight 
   assert.equal(refused.headers.get('Access-Control-Allow-Origin'), null);
 });
 
-test('ask streams meta, deltas and done, with the grounding prompt built server-side', async () => {
+test('ask: gpt-oss is asked without streaming by default and the whole answer comes back as JSON', async () => {
   const env = { AI: fakeAI((model, options) => {
     assert.equal(model, DEFAULT_MODEL);
     assert.equal(model, '@cf/openai/gpt-oss-120b');
-    assert.equal(options.stream, true);
-    // gpt-oss: Responses API shape first, with the reasoning effort set to low in the API and in the prompt.
+    assert.equal(options.stream, undefined, 'streaming in the Responses shape returns nothing on the live platform');
+    // Responses API shape first, with the reasoning effort set to low in the API and in the prompt.
     assert.equal(options.messages, undefined);
     assert.match(options.instructions, /^Reasoning: low\n\n/);
     assert.match(options.instructions, /Logic Practice/);
@@ -43,19 +43,59 @@ test('ask streams meta, deltas and done, with the grounding prompt built server-
     assert.deepEqual(options.reasoning, { effort: 'low' });
     assert.equal(options.max_output_tokens, 1000);
     assert.equal(options.temperature, 0.3);
-    return upstreamStream(['Modus tollens ', 'is valid.']);
+    return { status: 'completed', output: [{ type: 'reasoning', summary: [] }, { type: 'message', content: [{ type: 'output_text', text: 'Modus tollens is valid.' }] }], usage: { output_tokens: 40 } };
   }) };
   const response = await handleRequest(post('/ask', { question: 'What is modus tollens?' }), env);
   assert.equal(response.status, 200);
-  assert.match(response.headers.get('Content-Type'), /text\/event-stream/);
+  assert.match(response.headers.get('Content-Type'), /application\/json/);
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), ORIGIN);
+  const body = await response.json();
+  assert.equal(body.answer, 'Modus tollens is valid.');
+  assert.equal(body.allowance, 10);
+  assert.equal(body.remaining, 10, 'without a cache the daily count is open');
+  assert.ok(body.resources.some(r => r.id === 'tool-logic-practice'));
+  // An empty non-streamed result is an error with the outcome in the detail.
+  const empty = { AI: fakeAI(() => ({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [{ type: 'reasoning', summary: [{ type: 'summary_text', text: 'long thought' }] }] })) };
+  const failed = await handleRequest(post('/ask', { question: 'q' }), empty);
+  assert.equal(failed.status, 502);
+  assert.match((await failed.json()).detail, /max_output_tokens/);
+});
+
+test('ask streams when TUTOR_STREAM asks for it, in the Responses or the chat shape', async () => {
+  const responses = { TUTOR_STREAM: 'responses', AI: fakeAI((model, options) => {
+    assert.equal(options.stream, true);
+    assert.deepEqual(options.input, [{ role: 'user', content: 'What is modus tollens?' }]);
+    assert.deepEqual(options.reasoning, { effort: 'low' });
+    return upstreamStream(['Modus tollens ', 'is valid.']);
+  }) };
+  const response = await handleRequest(post('/ask', { question: 'What is modus tollens?' }), responses);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('Content-Type'), /text\/event-stream/);
   const events = await readEvents(response);
   assert.equal(events[0].type, 'meta');
   assert.equal(events[0].allowance, 10);
-  assert.equal(events[0].remaining, 10, 'without a cache the daily count is open');
   assert.ok(events[0].resources.some(r => r.id === 'tool-logic-practice'));
   assert.equal(events.filter(e => e.type === 'delta').map(e => e.text).join(''), 'Modus tollens is valid.');
   assert.equal(events.at(-1).type, 'done');
+
+  const messages = { TUTOR_STREAM: 'messages', AI: fakeAI((model, options) => {
+    assert.equal(options.stream, true);
+    assert.equal(options.input, undefined, 'the chat shape is used directly');
+    assert.equal(options.reasoning_effort, 'low');
+    assert.equal(options.max_tokens, 1000);
+    assert.match(options.messages[0].content, /^Reasoning: low/);
+    assert.equal(options.messages[1].content, 'What is modus tollens?');
+    return upstreamStream(['Yes.']);
+  }) };
+  const chat = await readEvents(await handleRequest(post('/ask', { question: 'What is modus tollens?' }), messages));
+  assert.equal(chat.filter(e => e.type === 'delta').map(e => e.text).join(''), 'Yes.');
+  assert.equal(messages.AI.calls.length, 1);
+
+  // Other families stream in the chat shape by default; TUTOR_STREAM=off turns streaming off for any model.
+  const llama = { MODEL: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', AI: fakeAI((model, options) => { assert.equal(options.stream, true); return upstreamStream(['Valid.']); }) };
+  assert.equal((await readEvents(await handleRequest(post('/ask', { question: 'q' }), llama))).at(-1).type, 'done');
+  const quiet = { MODEL: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', TUTOR_STREAM: 'off', AI: fakeAI((model, options) => { assert.equal(options.stream, undefined); return { response: 'Valid.' }; }) };
+  assert.equal((await (await handleRequest(post('/ask', { question: 'q' }), quiet)).json()).answer, 'Valid.');
 });
 
 test('thinking blocks are stripped from streamed answers, even across chunk boundaries', async () => {
@@ -120,7 +160,7 @@ test('a used-up daily allowance becomes a clear quota message', async () => {
 
 test('health reports the model, and a deployment without the AI binding says so', async () => {
   const health = await handleRequest(new Request('https://tutor.example/health', { headers: { Origin: ORIGIN } }), { AI: fakeAI(() => 'x') });
-  assert.deepEqual(await health.json(), { ok: true, model: DEFAULT_MODEL, label: 'gpt-oss-120b', quiet: 'responses', effort: 'low', configured: true, limiter: false, limits: { questionChars: 1500, answerTokens: 1000, perMinute: 3, perDay: 10 } });
+  assert.deepEqual(await health.json(), { ok: true, model: DEFAULT_MODEL, label: 'gpt-oss-120b', quiet: 'responses', effort: 'low', configured: true, stream: 'off', limiter: false, limits: { questionChars: 1500, answerTokens: 1000, perMinute: 3, perDay: 10 } });
   const missing = await handleRequest(post('/ask', { question: 'q' }), {});
   assert.equal(missing.status, 503);
   assert.equal((await handleRequest(post('/logic', { difficulty: 'easy' }), { AI: fakeAI(() => 'x') })).status, 404, 'AI is for tutoring only; no generation endpoint');
@@ -331,4 +371,40 @@ test('Responses-API streams: reasoning deltas are hidden, text deltas shown, and
   assert.equal(outcomeOf({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [] }).finish, 'max_output_tokens');
   const shaped = responsesShape({ messages: [{ role: 'system', content: 'S' }, { role: 'user', content: 'U' }], max_tokens: 1000, max_completion_tokens: 1000, temperature: 0.3, stream: true });
   assert.deepEqual(shaped, { temperature: 0.3, stream: true, instructions: 'S', input: [{ role: 'user', content: 'U' }], reasoning: { effort: 'low' }, max_output_tokens: 1000 });
+});
+
+test('the probe can stream on request and show the raw head, so a silent stream can be diagnosed without a redeploy', async () => {
+  // The live platform's reply to a streamed Responses-shape request: one empty legacy chunk.
+  const silent = { AI: fakeAI((model, options) => { assert.equal(options.stream, true); assert.ok(options.input); return new ReadableStream({ start(controller) { controller.enqueue(encoder.encode('data: {"response":"","usage":{"neurons":0}}\n\ndata: [DONE]\n\n')); controller.close(); } }); }) };
+  const dump = await (await handleRequest(new Request('https://tutor.example/probe?q=Why%3F&stream=1', { headers: { Origin: ORIGIN } }), silent)).json();
+  assert.equal(dump.ok, false);
+  assert.equal(dump.streamed, true);
+  assert.equal(dump.shape, 'auto');
+  assert.equal(dump.events, 1);
+  assert.match(dump.rawHead, /"response":""/);
+  assert.deepEqual(dump.usage, { neurons: 0 });
+
+  // Forcing the chat shape skips the Responses attempt entirely.
+  const chat = { AI: fakeAI((model, options) => { assert.equal(options.input, undefined); assert.equal(options.reasoning_effort, 'low'); return upstreamStream(['Because ', 'it is.']); }) };
+  const shown = await (await handleRequest(new Request('https://tutor.example/probe?q=Why%3F&stream=1&shape=messages', { headers: { Origin: ORIGIN } }), chat)).json();
+  assert.equal(shown.ok, true);
+  assert.equal(shown.shape, 'messages');
+  assert.equal(shown.text, 'Because it is.');
+  assert.equal(shown.events, 2);
+  assert.equal(chat.AI.calls.length, 1);
+
+  // Forcing the Responses shape on a non-streamed probe.
+  const forced = { AI: fakeAI((model, options) => { assert.ok(options.input); assert.equal(options.stream, undefined); return { output: [{ type: 'message', content: [{ type: 'output_text', text: 'OK' }] }], status: 'completed' }; }) };
+  const plain = await (await handleRequest(new Request('https://tutor.example/probe?shape=responses', { headers: { Origin: ORIGIN } }), forced)).json();
+  assert.equal(plain.ok, true);
+  assert.equal(plain.streamed, false);
+  assert.equal(plain.finish, 'completed');
+
+  // A chunk with an empty legacy field beside the real text is read correctly.
+  assert.equal(chunkText({ response: '', type: 'response.output_text.delta', delta: 'real' }), 'real');
+  assert.equal(chunkText({ response: 'legacy', choices: [{ delta: { content: '' } }] }), 'legacy');
+  const collected = await collectStream(upstreamStream(['a', 'b']));
+  assert.equal(collected.text, 'ab');
+  assert.equal(collected.events, 2);
+  assert.deepEqual([streamModeFor('@cf/openai/gpt-oss-120b'), streamModeFor('@cf/meta/llama-3.3-70b-instruct-fp8-fast'), streamModeFor('@cf/openai/gpt-oss-120b', { TUTOR_STREAM: 'Messages' }), streamModeFor('@cf/openai/gpt-oss-120b', { TUTOR_STREAM: 'nonsense' })], ['off', 'messages', 'messages', 'off']);
 });

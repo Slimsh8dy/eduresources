@@ -12,6 +12,8 @@ export function plainText(text) {
     .replace(/__(.+?)__/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/^\s*[*\-]\s+/gm, '• ')
+    .replace(/(^|[^*\w])\*([^*\n]+?)\*(?!\w)/g, '$1$2')
+    .replace(/(^|[^_\w])_([^_\n]+?)_(?!\w)/g, '$1$2')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }

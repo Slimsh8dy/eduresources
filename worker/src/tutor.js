@@ -55,11 +55,15 @@ export function detailOf(value) {
 /** Text content from a streamed chunk in any of the shapes Workers AI uses. Reasoning fields are ignored. */
 export function chunkText(parsed) {
   if (!parsed || typeof parsed !== 'object') return '';
-  if (typeof parsed.response === 'string') return parsed.response;
   const delta = parsed.choices?.[0]?.delta;
-  if (delta && typeof delta.content === 'string') return delta.content;
-  if (parsed.type === 'response.output_text.delta' && typeof parsed.delta === 'string') return parsed.delta;
-  return '';
+  const candidates = [
+    parsed.response,
+    delta?.content,
+    parsed.type === 'response.output_text.delta' ? parsed.delta : undefined,
+    parsed.output_text,
+  ];
+  // A chunk may carry an empty legacy field beside the real one, so take the first non-empty string.
+  return candidates.find(value => typeof value === 'string' && value.length > 0) || '';
 }
 
 export function classifyUpstreamError(error) {
@@ -181,10 +185,11 @@ export function responsesShape(options) {
  *  the call is retried without it, and finally with the plain options only. */
 export const QUIET = Object.freeze({ reasoning_effort: EFFORT, chat_template_kwargs: { enable_thinking: false } });
 const looksLikeSchemaRejection = error => /chat_template_kwargs|reasoning_effort|reasoning|max_completion_tokens|max_output_tokens|instructions|input|messages|additional propert|unknown|unexpected|invalid|schema|not allowed|validation|required/i.test(String(error?.message || ''));
-export function attemptsFor(model, options) {
+export function attemptsFor(model, options, { shape = 'auto' } = {}) {
   const profile = modelProfile(model);
   const attempts = [];
-  if (profile.quiet === 'responses') attempts.push(responsesShape(options));
+  if (profile.quiet === 'responses' && shape !== 'messages') attempts.push(responsesShape(options));
+  if (shape === 'responses') return attempts.length ? attempts : [responsesShape(options)];
   if (profile.quiet === 'template') attempts.push({ ...options, ...QUIET });
   if (profile.quiet === 'template' || profile.quiet === 'effort' || profile.quiet === 'responses') attempts.push({ ...options, reasoning_effort: EFFORT });
   attempts.push(options);
@@ -192,9 +197,19 @@ export function attemptsFor(model, options) {
   attempts.push(older);
   return attempts;
 }
-export async function runQuietly(ai, model, options) {
+
+/** How /ask talks to the model. Streaming in the Responses shape came back empty on the live platform
+ *  (a single {"response":""} chunk), so gpt-oss is asked without streaming unless TUTOR_STREAM says
+ *  otherwise: 'responses' streams in that shape, 'messages' streams in the chat shape, 'off' never streams. */
+export function streamModeFor(model, env = {}) {
+  const wanted = String(env.TUTOR_STREAM || '').trim().toLowerCase();
+  if (['off', 'responses', 'messages'].includes(wanted)) return wanted;
+  return modelProfile(model).quiet === 'responses' ? 'off' : 'messages';
+}
+
+export async function runQuietly(ai, model, options, choice = {}) {
   let lastError;
-  for (const attempt of attemptsFor(model, options)) {
+  for (const attempt of attemptsFor(model, options, choice)) {
     try { return await ai.run(model, attempt); }
     catch (error) {
       lastError = error;
@@ -283,17 +298,73 @@ export function createThinkFilter() {
   };
 }
 
-/** Converts the Workers AI SSE stream into the site's own event stream. */
-export function relayStream(upstream, meta) {
-  const encoder = new TextEncoder();
+/** Reads a Workers AI event stream line by line. Each call to push() returns the answer text found in
+ *  the new bytes; the reader keeps the raw head, finish reason, usage and hidden-reasoning size. */
+export function createUpstreamReader(rawLimit = 600) {
   const decoder = new TextDecoder();
   const filter = createThinkFilter();
   let pending = '';
+  const state = { raw: '', finish: null, usage: null, reasoningChars: 0, events: 0 };
+  return {
+    state,
+    push(value) {
+      const chunk = decoder.decode(value, { stream: true });
+      if (state.raw.length < rawLimit) state.raw += chunk;
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? '';
+      let out = '';
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        let parsed;
+        try { parsed = JSON.parse(data); } catch { continue; }
+        state.events += 1;
+        if (parsed.error || parsed.errors || parsed.type === 'response.failed' || parsed.type === 'error') throw new Error(detailOf(parsed.error || parsed.errors || parsed.response?.error || parsed));
+        const choice = parsed.choices?.[0];
+        if (choice?.finish_reason) state.finish = choice.finish_reason;
+        if (parsed.usage) state.usage = parsed.usage;
+        if (typeof choice?.delta?.reasoning_content === 'string') state.reasoningChars += choice.delta.reasoning_content.length;
+        // Responses API events: reasoning text streams separately; completion carries status and usage.
+        if (/^response\.reasoning/.test(parsed.type || '') && typeof parsed.delta === 'string') state.reasoningChars += parsed.delta.length;
+        if ((parsed.type === 'response.completed' || parsed.type === 'response.incomplete') && parsed.response) {
+          state.finish = parsed.response.incomplete_details?.reason || parsed.response.status || state.finish;
+          state.usage = parsed.response.usage || state.usage;
+        }
+        const piece = chunkText(parsed);
+        if (piece) out += filter.push(piece);
+      }
+      return out;
+    },
+    flush() { return filter.flush(); },
+    ending() { return `finish_reason ${state.finish || 'unknown'}; hidden reasoning ${state.reasoningChars} characters; usage ${state.usage ? JSON.stringify(state.usage) : 'unknown'}`; },
+  };
+}
+
+/** Reads a whole upstream stream (for diagnostics) and returns what it carried. */
+export async function collectStream(upstream, rawLimit = 4000) {
+  const reader = upstream.getReader();
+  const parser = createUpstreamReader(rawLimit);
+  let text = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += parser.push(value);
+    }
+    text += parser.flush();
+  } catch (error) {
+    return { ...parser.state, text, error: detailOf(error) };
+  }
+  return { ...parser.state, text };
+}
+
+/** Converts the Workers AI SSE stream into the site's own event stream. */
+export function relayStream(upstream, meta) {
+  const encoder = new TextEncoder();
+  const parser = createUpstreamReader();
   let sawText = false;
-  let raw = '';
-  let finish = null;
-  let usage = null;
-  let reasoningChars = 0;
   const event = payload => encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
   return new ReadableStream({
     async start(controller) {
@@ -303,40 +374,13 @@ export function relayStream(upstream, meta) {
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          if (raw.length < 600) raw += chunk;
-          pending += chunk;
-          const lines = pending.split(/\r?\n/);
-          pending = lines.pop() ?? '';
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const data = line.slice(5).trim();
-            if (!data || data === '[DONE]') continue;
-            let parsed;
-            try { parsed = JSON.parse(data); } catch { continue; }
-            if (parsed.error || parsed.errors || parsed.type === 'response.failed' || parsed.type === 'error') throw new Error(detailOf(parsed.error || parsed.errors || parsed.response?.error || parsed));
-            const choice = parsed.choices?.[0];
-            if (choice?.finish_reason) finish = choice.finish_reason;
-            if (parsed.usage) usage = parsed.usage;
-            if (typeof choice?.delta?.reasoning_content === 'string') reasoningChars += choice.delta.reasoning_content.length;
-            // Responses API events: reasoning text streams separately; completion carries status and usage.
-            if (/^response\.reasoning/.test(parsed.type || '') && typeof parsed.delta === 'string') reasoningChars += parsed.delta.length;
-            if ((parsed.type === 'response.completed' || parsed.type === 'response.incomplete') && parsed.response) {
-              finish = parsed.response.incomplete_details?.reason || parsed.response.status || finish;
-              usage = parsed.response.usage || usage;
-            }
-            const piece = chunkText(parsed);
-            if (piece) {
-              const text = filter.push(piece);
-              if (text) { sawText = true; controller.enqueue(event({ type: 'delta', text })); }
-            }
-          }
+          const text = parser.push(value);
+          if (text) { sawText = true; controller.enqueue(event({ type: 'delta', text })); }
         }
-        const rest = filter.flush();
+        const rest = parser.flush();
         if (rest) { sawText = true; controller.enqueue(event({ type: 'delta', text: rest })); }
         if (!sawText) {
-          const ending = `finish_reason ${finish || 'unknown'}; hidden reasoning ${reasoningChars} characters; usage ${usage ? JSON.stringify(usage) : 'unknown'}`;
-          controller.enqueue(event({ type: 'error', message: MESSAGES.upstream, detail: `No answer text in the model stream (${ending}). First bytes: ${detailOf(raw).slice(0, 160) || '(empty)'}` }));
+          controller.enqueue(event({ type: 'error', message: MESSAGES.upstream, detail: `No answer text in the model stream (${parser.ending()}). First bytes: ${detailOf(parser.state.raw).slice(0, 160) || '(empty)'}` }));
         } else {
           controller.enqueue(event({ type: 'done' }));
         }
@@ -365,7 +409,7 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
   if (request.method === 'GET' && url.pathname === '/health') {
     return json({
       ok: true, model, label: modelProfile(model).label, quiet: modelProfile(model).quiet, effort: EFFORT, configured: Boolean(env.AI),
-      limiter: Boolean(env.LIMITER),
+      stream: streamModeFor(model, env), limiter: Boolean(env.LIMITER),
       limits: { questionChars: LIMITS.questionChars, answerTokens: LIMITS.answerTokens, perMinute: LIMITS.perVisitor.limit, perDay: LIMITS.perVisitorDay.limit },
     }, 200, cors);
   }
@@ -381,13 +425,21 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
     const target = requested || model;
     const question = cleanQuestion(url.searchParams.get('q') || '').slice(0, LIMITS.questionChars);
     const messages = question ? buildAskRequest(question).messages : [{ role: 'user', content: 'Reply with exactly the single word: OK' }];
+    // ?stream=1 dumps the head of the raw event stream; ?shape=messages|responses forces the request shape.
+    const streamed = url.searchParams.get('stream') === '1';
+    const shape = ['messages', 'responses'].includes(url.searchParams.get('shape') || '') ? url.searchParams.get('shape') : 'auto';
     const started = Date.now();
     try {
-      const result = await runQuietly(env.AI, target, requestOptions(target, messages, question ? LIMITS.answerTokens : LIMITS.probeTokens, question ? { temperature: 0.3 } : {}));
+      const options = requestOptions(target, messages, question ? LIMITS.answerTokens : LIMITS.probeTokens, { ...(question ? { temperature: 0.3 } : {}), ...(streamed ? { stream: true } : {}) });
+      const result = await runQuietly(env.AI, target, options, { shape });
+      if (result instanceof ReadableStream) {
+        const seen = await collectStream(result, 4000);
+        return json({ ok: seen.text.trim().length > 0, model: target, ms: Date.now() - started, streamed: true, shape, events: seen.events, text: seen.text.slice(0, 900), finish: seen.finish, usage: seen.usage, reasoningChars: seen.reasoningChars, rawHead: seen.raw.slice(0, 1500) }, 200, cors);
+      }
       const text = stripThinking(extractText(result)).trim();
-      return json({ ok: Boolean(text), model: target, ms: Date.now() - started, text: text.slice(0, 900), ...outcomeOf(result), shape: detailOf(result).slice(0, 240) }, 200, cors);
+      return json({ ok: Boolean(text), model: target, ms: Date.now() - started, streamed: false, shape, text: text.slice(0, 900), ...outcomeOf(result), rawHead: detailOf(result).slice(0, 240) }, 200, cors);
     } catch (error) {
-      return json({ ok: false, model: target, ms: Date.now() - started, error: detailOf(error) }, 502, cors);
+      return json({ ok: false, model: target, ms: Date.now() - started, streamed, shape, error: detailOf(error) }, 502, cors);
     }
   }
   if (request.method !== 'POST' || url.pathname !== '/ask') return json({ error: 'not_found', message: 'Not found.' }, 404, cors);
@@ -411,11 +463,13 @@ export async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 
   const prepared = buildAskRequest(question);
   const meta = { resources: prepared.resources, model, remaining: daily.remaining, allowance: LIMITS.perVisitorDay.limit };
+  const mode = streamModeFor(model, env);
   try {
-    const upstream = await runQuietly(env.AI, model, requestOptions(model, prepared.messages, LIMITS.answerTokens, { temperature: 0.3, stream: true }));
+    const options = requestOptions(model, prepared.messages, LIMITS.answerTokens, { temperature: 0.3, ...(mode === 'off' ? {} : { stream: true }) });
+    const upstream = await runQuietly(env.AI, model, options, { shape: mode === 'off' ? 'auto' : mode });
     if (!(upstream instanceof ReadableStream)) {
       const text = stripThinking(extractText(upstream)).trim();
-      if (!text) throw Object.assign(new Error('The model returned no text.'), { detail: detailOf(upstream) });
+      if (!text) throw Object.assign(new Error('The model returned no text.'), { detail: `${JSON.stringify(outcomeOf(upstream))} ${detailOf(upstream)}`.slice(0, 400) });
       return json({ answer: text, ...meta }, 200, cors);
     }
     return new Response(relayStream(upstream, meta), {
