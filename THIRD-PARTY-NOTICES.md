@@ -19,7 +19,7 @@ Build-only tools, such as Vite and its dependency tree, retain their own license
 
 ## Model access
 
-No model is committed to or downloaded by this repository. The AI tutor sends questions to a Cloudflare Worker which uses Cloudflare Workers AI to run **Gemma 4 26B** (`@cf/google/gemma-4-26b-a4b-it`). Cloudflare's terms treat models available through Workers AI as third-party products; use of Gemma is subject to the [Gemma Terms of Use](https://ai.google.dev/gemma/docs/gemma_4_license) and its prohibited-use policy. Cloudflare's developer-platform terms state that it does not use customer content to train generative AI tools. Model output is generated text and is not endorsed by the site.
+No model is committed to or downloaded by this repository. The AI tutor sends questions to a Cloudflare Worker which uses Cloudflare Workers AI to run OpenAI's open-weight **gpt-oss-120b** (`@cf/openai/gpt-oss-120b`), released under the [Apache License 2.0](https://huggingface.co/openai/gpt-oss-120b) together with OpenAI's usage policy for the model. Cloudflare's terms treat models available through Workers AI as third-party products. The Worker can also be pointed at other Workers AI models (see the README); each is subject to its own licence, for example the [Gemma Terms of Use](https://ai.google.dev/gemma/docs/gemma_4_license) for Gemma 4 and Meta's Llama licences for the Llama models. Cloudflare's developer-platform terms state that it does not use customer content to train generative AI tools. Model output is generated text and is not endorsed by the site.
 
 ## License texts
 

@@ -1003,13 +1003,17 @@ var DEFAULT_ORIGINS = [
 	"http://127.0.0.1:4173"
 ];
 var LIMITS = Object.freeze({
-	questionChars: 1800,
+	questionChars: 1500,
 	bodyBytes: 8192,
-	answerTokens: 1600,
+	answerTokens: 1e3,
 	probeTokens: 400,
 	perVisitor: {
 		limit: 3,
 		period: 60
+	},
+	perVisitorDay: {
+		limit: 10,
+		period: 86400
 	},
 	perAddress: {
 		limit: 40,
@@ -1017,8 +1021,10 @@ var LIMITS = Object.freeze({
 	}
 });
 var MESSAGES = Object.freeze({
-	quota: "The tutor has used up today’s free allowance for everyone. It resets at midnight UTC (1 a.m. British Summer Time). The rest of the site works as usual.",
+	quota: "The tutor has used up today’s free allowance for everyone. It resets at midnight UTC (1 a.m. during British Summer Time). The rest of the site works as usual.",
 	rateLimited: "You are asking faster than the tutor can fairly serve. Wait a minute and ask again.",
+	dailyLimit: `You have asked your ${LIMITS.perVisitorDay.limit} questions for today. The tutor resets at midnight UTC (1 a.m. during British Summer Time). The flashcards, logic problems and essay planner are always available.`,
+	tooLong: `Your question is too long. Keep it under ${LIMITS.questionChars.toLocaleString("en-GB")} characters (about 250 words): ask about one point rather than pasting a whole essay.`,
 	upstream: "The tutor could not answer just now. Try again in a moment.",
 	unconfigured: "The tutor is not connected to a model on this deployment."
 });
@@ -1080,15 +1086,42 @@ function classifyUpstreamError(error) {
 		message: MESSAGES.upstream
 	};
 }
-/** Best-effort counter in the Cache API: one bucket per key per period. */
+/** Best-effort counter in the Cache API: one bucket per key per period (a UTC day when the period is 86400). */
 async function cacheCount(store, key, { limit, period }, now) {
 	const bucket = Math.floor(now / (period * 1e3));
-	const url = `https://ratelimit.eduresources.invalid/${encodeURIComponent(key)}/${bucket}`;
+	const url = `https://ratelimit.eduresources.invalid/${encodeURIComponent(key)}/${period}/${bucket}`;
 	const cached = await store.default.match(url);
 	const count = cached ? Number(await cached.text()) || 0 : 0;
-	if (count >= limit) return false;
+	if (count >= limit) return {
+		allowed: false,
+		count
+	};
 	await store.default.put(url, new Response(String(count + 1), { headers: { "Cache-Control": `max-age=${period}` } }));
-	return true;
+	return {
+		allowed: true,
+		count: count + 1
+	};
+}
+/** Counts one use against a rule and says how many remain. Best effort: the Cache API is per data
+*  centre and may forget, so this is a fairness measure, not a security one. */
+async function useAllowance(key, env, deps = {}, rule = LIMITS.perVisitorDay) {
+	const open = {
+		allowed: true,
+		count: 0,
+		remaining: rule.limit
+	};
+	if (!key) return open;
+	const store = deps.caches || globalThis.caches;
+	if (!store?.default) return open;
+	try {
+		const result = await cacheCount(store, key, rule, deps.now ? deps.now() : Date.now());
+		return {
+			...result,
+			remaining: Math.max(0, rule.limit - result.count)
+		};
+	} catch {
+		return open;
+	}
 }
 /** Returns true when the visitor is within the per-visitor limit. Best effort by design. */
 async function withinLimit(key, env, deps = {}, rule = LIMITS.perVisitor, useBinding = true) {
@@ -1099,13 +1132,7 @@ async function withinLimit(key, env, deps = {}, rule = LIMITS.perVisitor, useBin
 	} catch {
 		return true;
 	}
-	const store = deps.caches || globalThis.caches;
-	if (!store?.default) return true;
-	try {
-		return await cacheCount(store, key, rule, deps.now ? deps.now() : Date.now());
-	} catch {
-		return true;
-	}
+	return (await useAllowance(key, env, deps, rule)).allowed;
 }
 function clientId(request) {
 	const raw = request.headers.get("X-Tutor-Client") || "";
@@ -1117,7 +1144,7 @@ function cleanQuestion(value) {
 		const code = ch.charCodeAt(0);
 		return !(code < 32 && code !== 9 && code !== 10 && code !== 13) && code !== 127;
 	};
-	return Array.from(value).filter(keep).join("").trim().slice(0, LIMITS.questionChars);
+	return Array.from(value).filter(keep).join("").trim();
 }
 function buildAskRequest(question) {
 	const context = studyContext(question, RESOURCES, REVIEWED_EXCERPTS);
@@ -1139,10 +1166,20 @@ function buildAskRequest(question) {
 	};
 }
 /** Models the tutor may run on, with how each one's hidden reasoning can be kept out of the answer budget.
-*  quiet: 'template' — the OpenAI-style schema documents reasoning_effort and chat_template_kwargs (enable_thinking);
-*         'effort'   — only reasoning_effort applies; 'prompt' — Qwen3's soft switch, "/no_think" in the user turn;
-*         'none'     — an instruct model that does not reason privately. The list also bounds /probe?model=. */
+*  quiet: 'responses' — OpenAI's gpt-oss models: the Responses API shape with reasoning.effort, falling back
+*                       to chat messages with reasoning_effort; "Reasoning: low" is also stated in the prompt;
+*         'template'  — the OpenAI-style schema documents reasoning_effort and chat_template_kwargs (enable_thinking);
+*         'effort'    — only reasoning_effort applies; 'prompt' — Qwen3's soft switch, "/no_think" in the user turn;
+*         'none'      — an instruct model that does not reason privately. The list also bounds /probe?model=. */
 var CANDIDATE_MODELS = Object.freeze({
+	"@cf/openai/gpt-oss-120b": {
+		quiet: "responses",
+		label: "gpt-oss-120b"
+	},
+	"@cf/openai/gpt-oss-20b": {
+		quiet: "responses",
+		label: "gpt-oss-20b"
+	},
 	"@cf/google/gemma-4-26b-a4b-it": {
 		quiet: "template",
 		label: "Gemma 4 26B"
@@ -1162,14 +1199,6 @@ var CANDIDATE_MODELS = Object.freeze({
 	"@cf/nvidia/nemotron-3-120b-a12b": {
 		quiet: "template",
 		label: "Nemotron 3 120B"
-	},
-	"@cf/openai/gpt-oss-20b": {
-		quiet: "effort",
-		label: "gpt-oss-20b"
-	},
-	"@cf/openai/gpt-oss-120b": {
-		quiet: "effort",
-		label: "gpt-oss-120b"
 	},
 	"@cf/qwen/qwen3-30b-a3b-fp8": {
 		quiet: "prompt",
@@ -1210,11 +1239,32 @@ function requestOptions(model, messages, budget, extra = {}) {
 			content: `${m.content} /no_think`
 		} : m);
 	}
+	if (profile.quiet === "responses") turns = messages.map((m, i) => i === 0 && m.role === "system" && !/^Reasoning: /.test(m.content) ? {
+		...m,
+		content: `Reasoning: low\n\n${m.content}`
+	} : m);
 	return {
 		messages: turns,
 		max_tokens: budget,
 		max_completion_tokens: budget,
 		...extra
+	};
+}
+/** The same request in the Responses API shape (input, instructions, reasoning.effort, max_output_tokens). */
+function responsesShape(options) {
+	const { messages = [], max_tokens, max_completion_tokens, reasoning_effort, chat_template_kwargs, ...rest } = options;
+	const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+	const input = messages.filter((m) => m.role !== "system").map((m) => ({
+		role: m.role,
+		content: m.content
+	}));
+	const budget = max_completion_tokens ?? max_tokens;
+	return {
+		...rest,
+		...system ? { instructions: system } : {},
+		input,
+		reasoning: { effort: "low" },
+		...budget ? { max_output_tokens: budget } : {}
 	};
 }
 /** Reasoning models think privately before they answer, and the thinking counts against the token budget.
@@ -1224,23 +1274,27 @@ var QUIET = Object.freeze({
 	reasoning_effort: "low",
 	chat_template_kwargs: { enable_thinking: false }
 });
-var looksLikeSchemaRejection = (error) => /chat_template_kwargs|reasoning_effort|max_completion_tokens|additional propert|unknown|unexpected|invalid|schema|not allowed|validation/i.test(String(error?.message || ""));
-async function runQuietly(ai, model, options) {
+var looksLikeSchemaRejection = (error) => /chat_template_kwargs|reasoning_effort|reasoning|max_completion_tokens|max_output_tokens|instructions|input|messages|additional propert|unknown|unexpected|invalid|schema|not allowed|validation|required/i.test(String(error?.message || ""));
+function attemptsFor(model, options) {
 	const profile = modelProfile(model);
 	const attempts = [];
+	if (profile.quiet === "responses") attempts.push(responsesShape(options));
 	if (profile.quiet === "template") attempts.push({
 		...options,
 		...QUIET
 	});
-	if (profile.quiet === "template" || profile.quiet === "effort") attempts.push({
+	if (profile.quiet === "template" || profile.quiet === "effort" || profile.quiet === "responses") attempts.push({
 		...options,
-		reasoning_effort: QUIET.reasoning_effort
+		reasoning_effort: "low"
 	});
 	attempts.push(options);
 	const { max_completion_tokens, ...older } = options;
 	attempts.push(older);
+	return attempts;
+}
+async function runQuietly(ai, model, options) {
 	let lastError;
-	for (const attempt of attempts) try {
+	for (const attempt of attemptsFor(model, options)) try {
 		return await ai.run(model, attempt);
 	} catch (error) {
 		lastError = error;
@@ -1263,10 +1317,15 @@ function extractText(result) {
 /** What a finished (non-streamed) result says about how it ended: finish reason and token usage. */
 function outcomeOf(result) {
 	const choice = result?.choices?.[0];
+	let reasoningChars = typeof choice?.message?.reasoning_content === "string" ? choice.message.reasoning_content.length : 0;
+	if (Array.isArray(result?.output)) for (const item of result.output) {
+		if (item?.type !== "reasoning") continue;
+		for (const part of [...item.summary || [], ...item.content || []]) if (typeof part?.text === "string") reasoningChars += part.text.length;
+	}
 	return {
-		finish: choice?.finish_reason ?? result?.status ?? null,
+		finish: choice?.finish_reason ?? result?.incomplete_details?.reason ?? result?.status ?? null,
 		usage: result?.usage ?? null,
-		reasoningChars: typeof choice?.message?.reasoning_content === "string" ? choice.message.reasoning_content.length : 0
+		reasoningChars
 	};
 }
 /** Removes complete <think>/<thought>/<reasoning> blocks from a finished text. */
@@ -1351,11 +1410,16 @@ function relayStream(upstream, meta) {
 					} catch {
 						continue;
 					}
-					if (parsed.error || parsed.errors) throw new Error(detailOf(parsed.error || parsed.errors));
+					if (parsed.error || parsed.errors || parsed.type === "response.failed" || parsed.type === "error") throw new Error(detailOf(parsed.error || parsed.errors || parsed.response?.error || parsed));
 					const choice = parsed.choices?.[0];
 					if (choice?.finish_reason) finish = choice.finish_reason;
 					if (parsed.usage) usage = parsed.usage;
 					if (typeof choice?.delta?.reasoning_content === "string") reasoningChars += choice.delta.reasoning_content.length;
+					if (/^response\.reasoning/.test(parsed.type || "") && typeof parsed.delta === "string") reasoningChars += parsed.delta.length;
+					if ((parsed.type === "response.completed" || parsed.type === "response.incomplete") && parsed.response) {
+						finish = parsed.response.incomplete_details?.reason || parsed.response.status || finish;
+						usage = parsed.response.usage || usage;
+					}
 					const piece = chunkText(parsed);
 					if (piece) {
 						const text = filter.push(piece);
@@ -1409,7 +1473,7 @@ async function readJson(request) {
 async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 	const cors = corsHeaders(request, env);
 	const url = new URL(request.url);
-	const model = env.MODEL || "@cf/google/gemma-4-26b-a4b-it";
+	const model = env.MODEL || "@cf/openai/gpt-oss-120b";
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: cors
@@ -1419,7 +1483,15 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 		model,
 		label: modelProfile(model).label,
 		quiet: modelProfile(model).quiet,
-		configured: Boolean(env.AI)
+		effort: "low",
+		configured: Boolean(env.AI),
+		limiter: Boolean(env.LIMITER),
+		limits: {
+			questionChars: LIMITS.questionChars,
+			answerTokens: LIMITS.answerTokens,
+			perMinute: LIMITS.perVisitor.limit,
+			perDay: LIMITS.perVisitorDay.limit
+		}
 	}, 200, cors);
 	if (request.method === "GET" && url.pathname === "/probe") {
 		if (!env.AI) return json({
@@ -1440,7 +1512,7 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 			models: Object.keys(CANDIDATE_MODELS)
 		}, 400, cors);
 		const target = requested || model;
-		const question = cleanQuestion(url.searchParams.get("q") || "");
+		const question = cleanQuestion(url.searchParams.get("q") || "").slice(0, LIMITS.questionChars);
 		const messages = question ? buildAskRequest(question).messages : [{
 			role: "user",
 			content: "Reply with exactly the single word: OK"
@@ -1487,20 +1559,39 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 			message: error.message
 		}, error.status || 400, cors);
 	}
+	const question = cleanQuestion(body.question);
+	if (!question) return json({
+		error: "bad_request",
+		message: "Enter a question first."
+	}, 400, cors);
+	if (question.length > LIMITS.questionChars) return json({
+		error: "too_long",
+		message: MESSAGES.tooLong,
+		limit: LIMITS.questionChars
+	}, 400, cors);
 	const address = request.headers.get("CF-Connecting-IP") || "";
-	if (!(await withinLimit(clientId(request) || (address ? `addr:${address}` : ""), env, deps) && await withinLimit(address ? `ip:${address}` : "", env, deps, LIMITS.perAddress, false))) return json({
+	const browser = clientId(request) || (address ? `addr:${address}` : "");
+	if (!(await withinLimit(browser, env, deps) && await withinLimit(address ? `ip:${address}` : "", env, deps, LIMITS.perAddress, false))) return json({
 		error: "rate_limited",
 		message: MESSAGES.rateLimited
 	}, 429, {
 		...cors,
 		"Retry-After": "60"
 	});
-	const question = cleanQuestion(body.question);
-	if (!question) return json({
-		error: "bad_request",
-		message: "Enter a question first."
-	}, 400, cors);
+	const daily = await useAllowance(browser, env, deps, LIMITS.perVisitorDay);
+	if (!daily.allowed) return json({
+		error: "daily_limit",
+		message: MESSAGES.dailyLimit,
+		remaining: 0,
+		allowance: LIMITS.perVisitorDay.limit
+	}, 429, cors);
 	const prepared = buildAskRequest(question);
+	const meta = {
+		resources: prepared.resources,
+		model,
+		remaining: daily.remaining,
+		allowance: LIMITS.perVisitorDay.limit
+	};
 	try {
 		const upstream = await runQuietly(env.AI, model, requestOptions(model, prepared.messages, LIMITS.answerTokens, {
 			temperature: .3,
@@ -1511,13 +1602,10 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 			if (!text) throw Object.assign(/* @__PURE__ */ new Error("The model returned no text."), { detail: detailOf(upstream) });
 			return json({
 				answer: text,
-				resources: prepared.resources
+				...meta
 			}, 200, cors);
 		}
-		return new Response(relayStream(upstream, {
-			resources: prepared.resources,
-			model
-		}), {
+		return new Response(relayStream(upstream, meta), {
 			status: 200,
 			headers: {
 				...cors,

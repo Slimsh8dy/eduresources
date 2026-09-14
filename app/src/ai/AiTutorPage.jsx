@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAI } from './AiProvider.jsx';
-import { TUTOR_ENDPOINT, TUTOR_MODEL_LABEL } from './config.js';
+import { TUTOR_ENDPOINT, TUTOR_MODEL_LABEL, QUESTION_MAX_CHARS } from './config.js';
 import { resourceTarget } from './grounding.mjs';
 
 /** The model sometimes answers in Markdown; the page shows text literally, so soften the symbols. */
@@ -35,6 +35,7 @@ export default function AiTutorPage() {
   const [modelLabel, setModelLabel] = useState(TUTOR_MODEL_LABEL);
   const questionRef = useRef(null);
   const endRef = useRef(null);
+  const exhausted = ai.remaining === 0;
 
   useEffect(() => { if (live) endRef.current?.scrollIntoView({ block: 'nearest' }); }, [live?.answer]);
 
@@ -52,7 +53,7 @@ export default function AiTutorPage() {
   async function handleAsk(event) {
     event.preventDefault();
     const prompt = question.trim();
-    if (!prompt || ai.busy || !ai.configured) return;
+    if (!prompt || ai.busy || !ai.configured || exhausted) return;
     setNotice('');
     setLive({ question: prompt, answer: '' });
     try {
@@ -77,11 +78,15 @@ export default function AiTutorPage() {
     <form onSubmit={handleAsk} className="tutor-form">
       <label htmlFor="tutor-question">Your question</label>
       <textarea id="tutor-question" ref={questionRef} value={question} onChange={event => setQuestion(event.target.value)}
-        rows={3} maxLength={1800} aria-describedby="tutor-help" disabled={!ai.configured}
+        rows={3} maxLength={QUESTION_MAX_CHARS} aria-describedby="tutor-help" disabled={!ai.configured || exhausted}
         placeholder="For example: How does Kant distinguish acting from duty from acting in accordance with duty?" />
-      <p id="tutor-help" className="tutor-help">One focused question at a time. Please do not include personal information.</p>
+      <p id="tutor-help" className="tutor-help">
+        One focused question at a time (up to about 250 words). Please do not include personal information.
+        {question.length >= QUESTION_MAX_CHARS - 200 && <> {QUESTION_MAX_CHARS - question.length} characters left.</>}
+        {typeof ai.remaining === 'number' && typeof ai.allowance === 'number' && <> {exhausted ? 'No questions left today.' : `${ai.remaining} of ${ai.allowance} questions left today.`}</>}
+      </p>
       <div className="tutor-actions">
-        <button type="submit" className="primary" disabled={!ai.configured || ai.busy || !question.trim()}>{ai.busy ? 'Answering…' : 'Ask'}</button>
+        <button type="submit" className="primary" disabled={!ai.configured || ai.busy || exhausted || !question.trim()}>{ai.busy ? 'Answering…' : 'Ask'}</button>
         {ai.busy && <button type="button" onClick={() => ai.stop()}>Stop</button>}
         {exchanges.length > 0 && !ai.busy && <button type="button" className="quiet" onClick={() => setExchanges([])}>Clear conversation</button>}
       </div>
@@ -105,7 +110,7 @@ export default function AiTutorPage() {
     <details className="tutor-about">
       <summary>About this tutor</summary>
       <p>Your question is sent to a small program on Cloudflare, which adds relevant notes from this site and asks the <strong>{modelLabel}</strong> model (an open-weight model run on Cloudflare Workers AI) for an answer. Nothing is stored by the site and the conversation disappears when you leave the page. Cloudflare states that it does not use this content to train models.</p>
-      <p>The tutor is free to use and shares a daily allowance with everyone who visits. If it runs out, it says so and resets at midnight UTC. There is also a limit of a few questions a minute per person.</p>
+      <p>The tutor is free to use and shares a daily allowance with everyone who visits. If it runs out, it says so and resets at midnight UTC. Each person may ask three questions a minute and ten a day (counted per browser, not per account), and a question is limited to about 250 words, so ask about one point rather than pasting a whole essay.</p>
       <p>Answers are generated text: they can misattribute a view or invent a reference. The tutor does not mark work and has not read the PDFs in the library; links under an answer come from the site's own catalogue. For practice without AI, try the <Link to="/flashcards">flashcards</Link>, <Link to="/philosophy-fundamentals/logic-problems">logic problems</Link> and the <Link to="/philosophy-basics">essay planner</Link>.</p>
     </details>
   </section>;

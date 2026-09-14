@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { browserId, createTutorClient, readEventStream } from '../app/src/ai/client.mjs';
+import { browserId, createTutorClient, readEventStream, readDaily } from '../app/src/ai/client.mjs';
 import { relatedResources, resourceTarget, studyContext } from '../app/src/ai/grounding.mjs';
 
 const encoder = new TextEncoder();
@@ -152,4 +152,32 @@ test('excerpt retrieval prioritizes title matches and limits references to three
   assert.ok(supplied.startsWith('Source tool: Study tool\nModus tollens\nBEST_MATCH'));
   assert.doesNotMatch(supplied, /passing mention/);
   assert.ok(supplied.length <= 2104);
+});
+
+test('the daily allowance is read from the Worker, kept per browser for the day, and closes the tutor at zero', async () => {
+  const store = new Map();
+  const storage = { getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)) };
+  let reply = () => streamResponse([{ type: 'meta', resources: [], remaining: 7, allowance: 10 }, { type: 'delta', text: 'Yes.' }, { type: 'done' }]);
+  const client = createTutorClient({ endpoint: 'https://tutor.example', storage, fetch: async () => reply() });
+  assert.equal(client.getSnapshot().remaining, null, 'nothing known before the first answer');
+  const states = [];
+  client.subscribe(state => states.push({ busy: state.busy, remaining: state.remaining }));
+  await client.ask('Is modus ponens valid?');
+  assert.equal(client.getSnapshot().remaining, 7);
+  assert.equal(client.getSnapshot().allowance, 10);
+  assert.ok(states.some(s => s.busy === true && s.remaining === 7), 'learning the count mid-answer does not end the busy state');
+  assert.deepEqual(readDaily(storage), { remaining: 7, allowance: 10 }, 'a reload the same day starts from the saved count');
+  assert.deepEqual(readDaily(storage, Date.now() + 86_400_000), { remaining: null, allowance: null }, 'tomorrow starts afresh');
+
+  reply = () => jsonResponse({ error: 'daily_limit', message: 'You have asked your 10 questions for today.', remaining: 0, allowance: 10 }, 429);
+  await assert.rejects(client.ask('Another?'), /10 questions for today/);
+  assert.equal(client.getSnapshot().remaining, 0);
+  assert.equal(client.getSnapshot().status, 'error');
+  assert.equal(readDaily(storage).remaining, 0);
+  client.dispose();
+
+  const fresh = createTutorClient({ endpoint: 'https://tutor.example', storage, fetch: async () => reply() });
+  assert.equal(fresh.getSnapshot().remaining, 0, 'a new page load remembers the day is used up');
+  fresh.dispose();
+  assert.deepEqual(readDaily({ getItem: () => { throw new Error('blocked'); } }), { remaining: null, allowance: null });
 });

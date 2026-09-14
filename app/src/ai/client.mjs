@@ -52,14 +52,38 @@ export function browserId(storage) {
   } catch { return make(); }
 }
 
-export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs = 90_000, clientId } = {}) {
+/** The day's remaining questions, as last reported by the Worker, kept per browser so a reload still shows it. */
+const DAILY_KEY = 'eduresources.tutor.daily.v1';
+const utcDay = (now = Date.now()) => Math.floor(now / 86_400_000);
+export function readDaily(storage, now) {
+  try {
+    const store = storage === undefined ? globalThis.localStorage : storage;
+    const saved = JSON.parse(store?.getItem(DAILY_KEY) || 'null');
+    if (saved && saved.day === utcDay(now) && Number.isInteger(saved.remaining) && Number.isInteger(saved.allowance)) return { remaining: saved.remaining, allowance: saved.allowance };
+  } catch { /* storage unavailable or malformed */ }
+  return { remaining: null, allowance: null };
+}
+function writeDaily(storage, daily, now) {
+  try {
+    const store = storage === undefined ? globalThis.localStorage : storage;
+    store?.setItem(DAILY_KEY, JSON.stringify({ day: utcDay(now), ...daily }));
+  } catch { /* best effort */ }
+}
+
+export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs = 90_000, clientId, storage } = {}) {
   const doFetch = fetchImpl || ((...args) => globalThis.fetch(...args));
-  const id = clientId || browserId();
+  const id = clientId || browserId(storage);
   const base = String(endpoint || '').replace(/\/+$/, '');
-  let state = { status: 'idle', busy: false, error: '', detail: '', configured: Boolean(base) };
+  let state = { status: 'idle', busy: false, error: '', detail: '', configured: Boolean(base), ...readDaily(storage) };
   let controller = null;
   const listeners = new Set();
-  const publish = patch => { state = { ...state, ...patch, busy: patch.status === 'generating' }; listeners.forEach(fn => fn(state)); };
+  const publish = patch => { const next = { ...state, ...patch }; state = { ...next, busy: next.status === 'generating' }; listeners.forEach(fn => fn(state)); };
+  const noteDaily = body => {
+    if (!body || !Number.isInteger(body.remaining) || !Number.isInteger(body.allowance)) return;
+    const daily = { remaining: Math.max(0, body.remaining), allowance: body.allowance };
+    writeDaily(storage, daily);
+    publish(daily);
+  };
 
   async function post(path, payload, signal) {
     if (!base) throw new Error('The tutor is not connected yet.');
@@ -74,7 +98,11 @@ export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs =
       let message = FALLBACK_MESSAGES.bad;
       let code = 'error';
       let detail = '';
-      try { const body = await response.json(); message = body.message || message; code = body.error || code; detail = typeof body.detail === 'string' ? body.detail : ''; } catch { /* non-JSON error */ }
+      try {
+        const body = await response.json();
+        message = body.message || message; code = body.error || code; detail = typeof body.detail === 'string' ? body.detail : '';
+        if (code === 'daily_limit') noteDaily(body);
+      } catch { /* non-JSON error */ }
       throw Object.assign(new Error(message), { name: 'TutorError', code, status: response.status, detail });
     }
     return response;
@@ -108,7 +136,7 @@ export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs =
       if (type.includes('text/event-stream') && response.body) {
         let failure = null;
         await readEventStream(response.body, event => {
-          if (event.type === 'meta' && Array.isArray(event.resources)) resources = event.resources;
+          if (event.type === 'meta') { if (Array.isArray(event.resources)) resources = event.resources; noteDaily(event); }
           else if (event.type === 'delta' && typeof event.text === 'string') { answer += event.text; onDelta?.(answer); }
           else if (event.type === 'error') failure = Object.assign(new Error(event.message || FALLBACK_MESSAGES.bad), { name: 'TutorError', detail: typeof event.detail === 'string' ? event.detail : '' });
         }, run.signal);
@@ -117,6 +145,7 @@ export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs =
         const body = await response.json();
         answer = String(body.answer || '');
         resources = Array.isArray(body.resources) ? body.resources : [];
+        noteDaily(body);
         onDelta?.(answer);
       }
       if (!answer.trim()) throw Object.assign(new Error(FALLBACK_MESSAGES.bad), { name: 'TutorError' });
