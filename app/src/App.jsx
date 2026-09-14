@@ -16,6 +16,7 @@ const TOPICS = [
   { slug: 'augustine', name: 'Augustine', desc: 'Human nature, freedom, original sin and theological debate.', recall: 'How are responsibility and grace related in Augustine’s account?', question: 'Does Augustine offer a convincing account of human freedom?' },
   { slug: 'natural-law', name: 'Natural Law', desc: 'Aquinas, practical reason and traditions of natural-law thought.', recall: 'How is natural-law ethics different from a natural-law theory of legal validity?', question: 'Does natural law provide a convincing basis for moral reasoning?' },
   { slug: 'situation-ethics', name: 'Situation Ethics', desc: 'Agape, context and Fletcher’s account of moral decisions.', recall: 'How does situation ethics differ from both legalism and antinomianism?', question: 'Can agape alone guide moral decisions reliably?' },
+  { slug: 'conscience', name: 'Conscience', desc: 'Voice of God, act of reason, super-ego or evolved instinct: Aquinas, Freud and their rivals.', recall: 'Why, for Aquinas, can conscientia err when synderesis cannot?', question: '“Aquinas’s account of conscience is more convincing than Freud’s.” Discuss.' },
   { slug: 'gender-theology', name: 'Gender & theology', desc: 'Contrasting draft arguments about gender, religion and Mary Daly.', recall: 'Which claims in these essays are descriptive, and which are normative?', question: 'Can religious traditions respond adequately to feminist criticism?' },
 ];
 const PAGE_TITLES = {

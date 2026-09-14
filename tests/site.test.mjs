@@ -39,7 +39,7 @@ const STATIC_ROUTES = new Set([
   '/intro-philosophy-ethics', '/philosophy-fundamentals', '/philosophy-fundamentals/logic-problems',
   '/philosophy-basics', '/philosophy-ethics-mind-maps', '/philosophy-ethics-questions', '/flashcards', '/ai-tutor',
 ]);
-const TOPIC_ROUTES = new Set(['utilitarianism', 'kantianism', 'augustine', 'natural-law', 'situation-ethics', 'gender-theology']);
+const TOPIC_ROUTES = new Set(['utilitarianism', 'kantianism', 'augustine', 'natural-law', 'situation-ethics', 'conscience', 'gender-theology']);
 
 test('site catalogue IDs and resource destinations are complete', () => {
   assert.equal(new Set(RESOURCES.map(resource => resource.id)).size, RESOURCES.length);
@@ -81,4 +81,18 @@ test('all six linked audio files are byte-identical to HEAD and the original dep
     const duplicate = `resources/${filename.replace('.wav', ' 2.wav')}`;
     assert.equal(sha256(readFileSync(path.join(ROOT, duplicate))), expected, `Original duplicate audio modified: ${duplicate}`);
   }
+});
+
+test('the Conscience topic has its anthology as a downloadable PDF on its own topic page', () => {
+  const anthology = RESOURCES.find(resource => resource.id === 'conscience-anthology');
+  assert.ok(anthology, 'catalogue entry missing');
+  assert.equal(anthology.type, 'pdf');
+  assert.equal(anthology.topic, 'Conscience');
+  assert.equal(anthology.route, '/philosophy-ethics-revision/conscience');
+  assert.equal(anthology.file, 'resources/Conscience-Extended-Reading-Anthology.pdf');
+  const bytes = readFileSync(path.join(ROOT, anthology.file));
+  assert.ok(bytes.subarray(0, 5).toString() === '%PDF-', 'not a PDF');
+  assert.ok(bytes.length > 100_000, 'file looks truncated');
+  assert.match(anthology.desc, /Aquinas/);
+  assert.ok(anthology.tags.includes('Freud'));
 });
