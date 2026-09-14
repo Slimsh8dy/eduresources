@@ -1138,26 +1138,115 @@ function buildAskRequest(question) {
 		}]
 	};
 }
-/** Gemma 4 thinks at length before answering, and the thinking counts against the token budget.
-*  Two knobs exist across model families; each family ignores the other's, so both are sent.
-*  If the platform rejects the non-standard one, the call is retried without it. */
+/** Models the tutor may run on, with how each one's hidden reasoning can be kept out of the answer budget.
+*  quiet: 'template' — the OpenAI-style schema documents reasoning_effort and chat_template_kwargs (enable_thinking);
+*         'effort'   — only reasoning_effort applies; 'prompt' — Qwen3's soft switch, "/no_think" in the user turn;
+*         'none'     — an instruct model that does not reason privately. The list also bounds /probe?model=. */
+var CANDIDATE_MODELS = Object.freeze({
+	"@cf/google/gemma-4-26b-a4b-it": {
+		quiet: "template",
+		label: "Gemma 4 26B"
+	},
+	"@cf/zai-org/glm-4.7-flash": {
+		quiet: "template",
+		label: "GLM-4.7 Flash"
+	},
+	"@cf/zai-org/glm-5.3-flash": {
+		quiet: "template",
+		label: "GLM-5.3 Flash"
+	},
+	"@cf/deepseek-ai/deepseek-v4-flash-0731": {
+		quiet: "template",
+		label: "DeepSeek V4 Flash"
+	},
+	"@cf/nvidia/nemotron-3-120b-a12b": {
+		quiet: "template",
+		label: "Nemotron 3 120B"
+	},
+	"@cf/openai/gpt-oss-20b": {
+		quiet: "effort",
+		label: "gpt-oss-20b"
+	},
+	"@cf/openai/gpt-oss-120b": {
+		quiet: "effort",
+		label: "gpt-oss-120b"
+	},
+	"@cf/qwen/qwen3-30b-a3b-fp8": {
+		quiet: "prompt",
+		label: "Qwen3 30B-A3B"
+	},
+	"@cf/meta/llama-3.3-70b-instruct-fp8-fast": {
+		quiet: "none",
+		label: "Llama 3.3 70B"
+	},
+	"@cf/meta/llama-4-scout-17b-16e-instruct": {
+		quiet: "none",
+		label: "Llama 4 Scout"
+	},
+	"@cf/mistralai/mistral-small-3.1-24b-instruct": {
+		quiet: "none",
+		label: "Mistral Small 3.1 24B"
+	},
+	"@cf/meta/llama-3.1-8b-instruct-fast": {
+		quiet: "none",
+		label: "Llama 3.1 8B"
+	}
+});
+function modelProfile(model) {
+	return CANDIDATE_MODELS[model] || {
+		quiet: "template",
+		label: String(model || "")
+	};
+}
+/** Request options that every Workers AI text model accepts: both spellings of the token budget are sent
+*  (the older schemas read max_tokens, default 256; the OpenAI-style ones read max_completion_tokens). */
+function requestOptions(model, messages, budget, extra = {}) {
+	const profile = modelProfile(model);
+	let turns = messages;
+	if (profile.quiet === "prompt") {
+		const last = messages.length - 1;
+		turns = messages.map((m, i) => i === last && m.role === "user" ? {
+			...m,
+			content: `${m.content} /no_think`
+		} : m);
+	}
+	return {
+		messages: turns,
+		max_tokens: budget,
+		max_completion_tokens: budget,
+		...extra
+	};
+}
+/** Reasoning models think privately before they answer, and the thinking counts against the token budget.
+*  These knobs ask for as little of it as possible. If the platform rejects a knob the model's schema lacks,
+*  the call is retried without it, and finally with the plain options only. */
 var QUIET = Object.freeze({
 	reasoning_effort: "low",
 	chat_template_kwargs: { enable_thinking: false }
 });
+var looksLikeSchemaRejection = (error) => /chat_template_kwargs|reasoning_effort|max_completion_tokens|additional propert|unknown|unexpected|invalid|schema|not allowed|validation/i.test(String(error?.message || ""));
 async function runQuietly(ai, model, options) {
-	try {
-		return await ai.run(model, {
-			...options,
-			...QUIET
-		});
+	const profile = modelProfile(model);
+	const attempts = [];
+	if (profile.quiet === "template") attempts.push({
+		...options,
+		...QUIET
+	});
+	if (profile.quiet === "template" || profile.quiet === "effort") attempts.push({
+		...options,
+		reasoning_effort: QUIET.reasoning_effort
+	});
+	attempts.push(options);
+	const { max_completion_tokens, ...older } = options;
+	attempts.push(older);
+	let lastError;
+	for (const attempt of attempts) try {
+		return await ai.run(model, attempt);
 	} catch (error) {
-		if (!/chat_template_kwargs|additional propert|unknown|unexpected|invalid|schema/i.test(String(error?.message || ""))) throw error;
-		return ai.run(model, {
-			...options,
-			reasoning_effort: QUIET.reasoning_effort
-		});
+		lastError = error;
+		if (!looksLikeSchemaRejection(error)) throw error;
 	}
+	throw lastError;
 }
 /** Pull the text out of whichever shape Workers AI returns for a non-streamed call. */
 function extractText(result) {
@@ -1168,7 +1257,17 @@ function extractText(result) {
 	const choice = result.choices?.[0];
 	if (typeof choice?.message?.content === "string") return choice.message.content;
 	if (typeof result.output_text === "string") return result.output_text;
+	if (Array.isArray(result.output)) return result.output.filter((item) => item?.type === "message" && Array.isArray(item.content)).flatMap((item) => item.content).filter((part) => part?.type === "output_text" && typeof part.text === "string").map((part) => part.text).join("");
 	return "";
+}
+/** What a finished (non-streamed) result says about how it ended: finish reason and token usage. */
+function outcomeOf(result) {
+	const choice = result?.choices?.[0];
+	return {
+		finish: choice?.finish_reason ?? result?.status ?? null,
+		usage: result?.usage ?? null,
+		reasoningChars: typeof choice?.message?.reasoning_content === "string" ? choice.message.reasoning_content.length : 0
+	};
 }
 /** Removes complete <think>/<thought>/<reasoning> blocks from a finished text. */
 function stripThinking(text) {
@@ -1223,6 +1322,9 @@ function relayStream(upstream, meta) {
 	let pending = "";
 	let sawText = false;
 	let raw = "";
+	let finish = null;
+	let usage = null;
+	let reasoningChars = 0;
 	const event = (payload) => encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
 	return new ReadableStream({ async start(controller) {
 		controller.enqueue(event({
@@ -1250,6 +1352,10 @@ function relayStream(upstream, meta) {
 						continue;
 					}
 					if (parsed.error || parsed.errors) throw new Error(detailOf(parsed.error || parsed.errors));
+					const choice = parsed.choices?.[0];
+					if (choice?.finish_reason) finish = choice.finish_reason;
+					if (parsed.usage) usage = parsed.usage;
+					if (typeof choice?.delta?.reasoning_content === "string") reasoningChars += choice.delta.reasoning_content.length;
 					const piece = chunkText(parsed);
 					if (piece) {
 						const text = filter.push(piece);
@@ -1271,12 +1377,14 @@ function relayStream(upstream, meta) {
 					text: rest
 				}));
 			}
-			if (!sawText) controller.enqueue(event({
-				type: "error",
-				message: MESSAGES.upstream,
-				detail: `No answer text in the model stream. First bytes: ${detailOf(raw) || "(empty)"}`
-			}));
-			else controller.enqueue(event({ type: "done" }));
+			if (!sawText) {
+				const ending = `finish_reason ${finish || "unknown"}; hidden reasoning ${reasoningChars} characters; usage ${usage ? JSON.stringify(usage) : "unknown"}`;
+				controller.enqueue(event({
+					type: "error",
+					message: MESSAGES.upstream,
+					detail: `No answer text in the model stream (${ending}). First bytes: ${detailOf(raw).slice(0, 160) || "(empty)"}`
+				}));
+			} else controller.enqueue(event({ type: "done" }));
 		} catch (error) {
 			controller.enqueue(event({
 				type: "error",
@@ -1309,6 +1417,8 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 	if (request.method === "GET" && url.pathname === "/health") return json({
 		ok: true,
 		model,
+		label: modelProfile(model).label,
+		quiet: modelProfile(model).quiet,
 		configured: Boolean(env.AI)
 	}, 200, cors);
 	if (request.method === "GET" && url.pathname === "/probe") {
@@ -1322,24 +1432,36 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 			ok: false,
 			error: "rate_limited"
 		}, 429, cors);
+		const requested = url.searchParams.get("model") || "";
+		if (requested && !CANDIDATE_MODELS[requested]) return json({
+			ok: false,
+			error: "bad_request",
+			message: "Unknown model.",
+			models: Object.keys(CANDIDATE_MODELS)
+		}, 400, cors);
+		const target = requested || model;
+		const question = cleanQuestion(url.searchParams.get("q") || "");
+		const messages = question ? buildAskRequest(question).messages : [{
+			role: "user",
+			content: "Reply with exactly the single word: OK"
+		}];
+		const started = Date.now();
 		try {
-			const result = await runQuietly(env.AI, model, {
-				messages: [{
-					role: "user",
-					content: "Reply with exactly the single word: OK"
-				}],
-				max_completion_tokens: LIMITS.probeTokens
-			});
+			const result = await runQuietly(env.AI, target, requestOptions(target, messages, question ? LIMITS.answerTokens : LIMITS.probeTokens, question ? { temperature: .3 } : {}));
+			const text = stripThinking(extractText(result)).trim();
 			return json({
-				ok: true,
-				model,
-				text: extractText(result).slice(0, 200),
-				shape: detailOf(result)
+				ok: Boolean(text),
+				model: target,
+				ms: Date.now() - started,
+				text: text.slice(0, 900),
+				...outcomeOf(result),
+				shape: detailOf(result).slice(0, 240)
 			}, 200, cors);
 		} catch (error) {
 			return json({
 				ok: false,
-				model,
+				model: target,
+				ms: Date.now() - started,
 				error: detailOf(error)
 			}, 502, cors);
 		}
@@ -1380,12 +1502,10 @@ async function handleRequest(request, env = {}, ctx = {}, deps = {}) {
 	}, 400, cors);
 	const prepared = buildAskRequest(question);
 	try {
-		const upstream = await runQuietly(env.AI, model, {
-			messages: prepared.messages,
-			max_completion_tokens: LIMITS.answerTokens,
+		const upstream = await runQuietly(env.AI, model, requestOptions(model, prepared.messages, LIMITS.answerTokens, {
 			temperature: .3,
 			stream: true
-		});
+		}));
 		if (!(upstream instanceof ReadableStream)) {
 			const text = stripThinking(extractText(upstream)).trim();
 			if (!text) throw Object.assign(/* @__PURE__ */ new Error("The model returned no text."), { detail: detailOf(upstream) });

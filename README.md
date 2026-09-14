@@ -71,6 +71,12 @@ The tutor page sends a question to a small Cloudflare Worker (`worker/`). The Wo
 
 Developers can instead run `npx wrangler deploy` inside `worker/` (it reads `worker/wrangler.jsonc`). After changing anything under `worker/src/`, run `npm run build:worker` to regenerate the single-file bundle.
 
+### Changing the model
+
+The Worker runs whichever model the `MODEL` variable names (**Settings → Variables**); without one it uses Gemma 4 26B. The models it knows how to drive are listed in `CANDIDATE_MODELS` in `worker/src/tutor.js`, each with the way its private "thinking" is kept out of the answer budget (thinking otherwise counts against the tokens allowed for the reply, and a model that thinks for too long returns no answer at all). Two spellings of the token budget are sent so that older and newer Workers AI schemas both honour it. The tutor page shows the model's name from the Worker's `/health` reply, so no site rebuild is needed when the model changes.
+
+Before switching, try a candidate with the real tutor prompt: `GET /probe?model=<model id>&q=<a question>` runs one non-streamed call and reports the text, how the call finished (`finish`), token usage, hidden-reasoning size and time taken. Only listed models are accepted. Each probe costs neurons like a question.
+
 Model information: [Gemma 4 on Workers AI](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/) and the [Gemma Terms of Use](https://ai.google.dev/gemma/docs/gemma_4_license). Cloudflare states that it does not use Workers AI content to train models; questions are still processed on Cloudflare's servers, so the page asks visitors not to include personal information. Model output can be wrong; check claims against course materials and primary sources. The tutor does not grade work and has not read the linked PDFs; related links come from the site's catalogue rather than from the model.
 
 ## Saved work and practice questions

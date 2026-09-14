@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAI } from './AiProvider.jsx';
-import { TUTOR_MODEL_LABEL } from './config.js';
+import { TUTOR_ENDPOINT, TUTOR_MODEL_LABEL } from './config.js';
 import { resourceTarget } from './grounding.mjs';
 
 /** The model sometimes answers in Markdown; the page shows text literally, so soften the symbols. */
@@ -32,10 +32,22 @@ export default function AiTutorPage() {
   const [exchanges, setExchanges] = useState([]);
   const [live, setLive] = useState(null); // { question, answer } while an answer streams in
   const [notice, setNotice] = useState('');
+  const [modelLabel, setModelLabel] = useState(TUTOR_MODEL_LABEL);
   const questionRef = useRef(null);
   const endRef = useRef(null);
 
   useEffect(() => { if (live) endRef.current?.scrollIntoView({ block: 'nearest' }); }, [live?.answer]);
+
+  // The Worker knows which model it is running; ask it, so a model change needs no site update.
+  useEffect(() => {
+    if (!ai.configured || typeof fetch !== 'function') return undefined;
+    const controller = new AbortController();
+    fetch(`${TUTOR_ENDPOINT}/health`, { signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(body => { if (body && typeof body.label === 'string' && body.label.trim()) setModelLabel(body.label.trim()); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [ai.configured]);
 
   async function handleAsk(event) {
     event.preventDefault();
@@ -92,7 +104,7 @@ export default function AiTutorPage() {
 
     <details className="tutor-about">
       <summary>About this tutor</summary>
-      <p>Your question is sent to a small program on Cloudflare, which adds relevant notes from this site and asks the <strong>{TUTOR_MODEL_LABEL}</strong> model (an open-weight model from Google, run on Cloudflare Workers AI) for an answer. Nothing is stored by the site and the conversation disappears when you leave the page. Cloudflare states that it does not use this content to train models.</p>
+      <p>Your question is sent to a small program on Cloudflare, which adds relevant notes from this site and asks the <strong>{modelLabel}</strong> model (an open-weight model run on Cloudflare Workers AI) for an answer. Nothing is stored by the site and the conversation disappears when you leave the page. Cloudflare states that it does not use this content to train models.</p>
       <p>The tutor is free to use and shares a daily allowance with everyone who visits. If it runs out, it says so and resets at midnight UTC. There is also a limit of a few questions a minute per person.</p>
       <p>Answers are generated text: they can misattribute a view or invent a reference. The tutor does not mark work and has not read the PDFs in the library; links under an answer come from the site's own catalogue. For practice without AI, try the <Link to="/flashcards">flashcards</Link>, <Link to="/philosophy-fundamentals/logic-problems">logic problems</Link> and the <Link to="/philosophy-basics">essay planner</Link>.</p>
     </details>
