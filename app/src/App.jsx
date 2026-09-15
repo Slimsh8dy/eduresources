@@ -98,6 +98,7 @@ function SearchPanel({ onClose }) {
 
 function Shell() {
   const location = useLocation();
+  const isHome = location.pathname === '/';
   const main = useRef(null);
   const searchButton = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -114,12 +115,12 @@ function Shell() {
   const closeSearch = () => { setSearchOpen(false); searchButton.current?.focus(); };
   return <div className="App">
     <a className="skip-link" href="#main-content" onClick={e => { e.preventDefault(); main.current?.focus(); main.current?.scrollIntoView(); }}>Skip to content</a>
-    <header className="header">
+    <header className={`header${isHome ? ' header--home' : ''}`}>
       <div className="container header-top"><Link className="brand" to="/">EduResources</Link><div className="header-actions"><button ref={searchButton} type="button" aria-expanded={searchOpen} aria-controls="site-search" onClick={() => setSearchOpen(v => !v)}>Search</button><button type="button" onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}>{theme === 'light' ? '☾ Dark' : '☀ Light'}</button></div></div>
-      <nav className="container primary-nav" aria-label="Main navigation"><NavLink to="/" end>Home</NavLink><NavLink to="/philosophy-ethics-revision">Topic library</NavLink><NavLink to="/flashcards">Flashcards</NavLink><NavLink to="/philosophy-fundamentals/logic-problems">Logic practice</NavLink><NavLink to="/philosophy-basics">Essay planner</NavLink><NavLink to="/philosophy-ethics-questions">Questions</NavLink><NavLink to="/ai-tutor">AI tutor</NavLink></nav>
+      {!isHome && <nav className="container primary-nav" aria-label="Main navigation"><NavLink to="/" end>Home</NavLink><NavLink to="/philosophy-ethics-revision">Topic library</NavLink><NavLink to="/flashcards">Flashcards</NavLink><NavLink to="/philosophy-fundamentals/logic-problems">Logic practice</NavLink><NavLink to="/philosophy-basics">Essay planner</NavLink><NavLink to="/philosophy-ethics-questions">Questions</NavLink><NavLink to="/ai-tutor">AI tutor</NavLink></nav>}
     </header>
     {searchOpen && <SearchPanel onClose={closeSearch} />}
-    <main id="main-content" ref={main} tabIndex={-1} className="container main-content" aria-label={title}>
+    <main id="main-content" ref={main} tabIndex={-1} className={`container main-content${isHome ? ' main-content--home' : ''}`} aria-label={title}>
       {location.pathname !== '/' && <nav className="breadcrumbs" aria-label="Breadcrumb"><Link to="/">Home</Link><span aria-hidden="true"> / </span>{location.pathname.startsWith('/philosophy-ethics-revision/') && <><Link to="/philosophy-ethics-revision">Topic library</Link><span aria-hidden="true"> / </span></>}<span aria-current="page">{title}</span></nav>}
       <Routes>
         <Route path="/" element={<Home />} /><Route path="/intro-philosophy-ethics" element={<Intro />} /><Route path="/philosophy-fundamentals" element={<LogicIntro />} />
@@ -130,21 +131,53 @@ function Shell() {
         <Route path="/ai-tutor" element={<AiTutorPage />} /><Route path="/local-ai" element={<Navigate to="/ai-tutor" replace />} /><Route path="*" element={<NotFound />} />
       </Routes>
     </main>
-    <footer className="site-footer container"><p>EduResources · Sapere aude.</p><p>Study resources, not official exam-board guidance. Check your course specification and original sources.</p><p>Your drafts, reviews and ratings stay in this browser; clearing site data removes them, so export important work. The AI tutor is optional and can make mistakes.</p><a href="https://github.com/Slimsh8dy/eduresources" target="_blank" rel="noopener noreferrer">Source &amp; project history ↗</a></footer>
+    <SiteFooter compact={isHome} />
     {showBackToTop && <button className="back-to-top" aria-label="Back to top" onClick={() => { window.scrollTo({ top: 0, behavior: 'instant' }); main.current?.focus({ preventScroll: true }); }}>↑</button>}
   </div>;
 }
 
+function SiteFooter({ compact }) {
+  const notes = <><p>Study resources, not official exam-board guidance. Check your course specification and original sources.</p><p>Your drafts, reviews and ratings stay in this browser; clearing site data removes them, so export important work. The AI tutor is optional and can make mistakes.</p></>;
+  return <footer className={`site-footer container${compact ? ' site-footer--compact' : ''}`}>
+    {compact ? <details className="home-about"><summary>About</summary><div>{notes}</div></details> : <><p>EduResources · Sapere aude.</p>{notes}</>}
+    <a href="https://github.com/Slimsh8dy/eduresources" target="_blank" rel="noopener noreferrer">{compact ? 'Source ↗' : 'Source & project history ↗'}</a>
+  </footer>;
+}
+
 function Feature({ label, title, desc, to, cta }) { return <article className="card feature"><span className="eyebrow">{label}</span><h3>{title}</h3><p>{desc}</p><Link to={to}>{cta} →</Link></article>; }
+const HOME_TOOLS = [
+  { icon: 'book', label: 'Topic library', to: '/philosophy-ethics-revision' },
+  { icon: 'cards', label: 'Flashcards', to: '/flashcards' },
+  { icon: 'logic', label: 'Logic practice', to: '/philosophy-fundamentals/logic-problems' },
+  { icon: 'essay', label: 'Essay planner', to: '/philosophy-basics' },
+  { icon: 'question', label: 'Questions', to: '/philosophy-ethics-questions' },
+  { icon: 'conversation', label: 'AI tutor', to: '/ai-tutor' },
+];
+function HomeIcon({ type }) {
+  const shapes = {
+    book: <><path d="M16 8C12 5 7 5 3 6v20c4-1 9-1 13 2 4-3 9-3 13-2V6c-4-1-9-1-13 2Z" /><path d="M16 8v20M7 11c2-.2 4 .1 5 1M20 12c1-1 3-1.2 5-1" /></>,
+    cards: <><path d="M10 4h17v20M6 8h17v20" /><rect x="2" y="12" width="17" height="18" rx="2" /><path d="M7 18h7M7 23h4" /></>,
+    logic: <><circle cx="16" cy="6" r="3" /><circle cx="6" cy="26" r="3" /><circle cx="26" cy="26" r="3" /><path d="M16 9v7M6 23v-7h20v7" /></>,
+    essay: <><path d="M15 5H5v24h22V18M9 11h5M9 16h3M9 23h9" /><path d="m15 18 1-5L26 3l4 4-10 10-5 1ZM23 6l4 4" /></>,
+    question: <><circle cx="16" cy="16" r="13" /><path d="M12 11a4 4 0 1 1 6 3.5c-2 1-2 2-2 3.5M16 23h.01" /></>,
+    conversation: <><path d="M24 15V4H3v17l5-4h8" /><path d="M12 12h17v16l-5-4H12V12Z" /><path d="M16 17h9M16 20h5" /></>,
+  };
+  return <svg className="home-tool-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{shapes[type]}</svg>;
+}
 function Home() {
-  return <><section className="hero"><p className="eyebrow">A place to think for yourself</p><h1>Sapere aude<span>Build a better argument.</span></h1><p>Free resources for philosophy, ethics and theology. Understand the ideas, test your recall, then make a case of your own.</p><div className="actions"><Link className="btn" to="/philosophy-ethics-revision">Explore the topic library →</Link><Link to="/philosophy-basics">Start an essay plan</Link></div></section>
-    <section className="home-section"><div className="section-heading"><div><p className="eyebrow">Start where you are</p><h2>One idea. Four ways to work with it.</h2></div></div><div className="card-grid">
-      <Feature label="01 / Understand" title="Read the ideas" desc="Start with knowledge, moral reasoning and the structure of an argument." to="/intro-philosophy-ethics" cta="Explore the foundations" />
-      <Feature label="02 / Retrieve" title="Test what you remember" desc="Reveal, reflect and choose what to review next. Your progress stays on this device." to="/flashcards" cta="Review flashcards" />
-      <Feature label="03 / Apply" title="Test an argument" desc="Work through logic problems, compare a reasoned solution and revise your answer." to="/philosophy-fundamentals/logic-problems" cta="Practise logic" />
-      <Feature label="04 / Evaluate" title="Build your own position" desc="Choose a question and develop a plan with objections, replies and a final judgement." to="/philosophy-ethics-questions" cta="Choose a practice question" />
-    </div></section><section className="home-section"><h2>Find your topic</h2><TopicCards /></section>
-    <section className="ai-banner"><div><p className="eyebrow">Optional</p><h2>A thinking partner, not an answer key.</h2><p>Ask the AI tutor about a concept, test an objection or find a resource. Free, no account; answers can be wrong, so check them.</p></div><Link className="btn" to="/ai-tutor">Open the AI tutor →</Link></section></>;
+  return <div className="home">
+    <h1 className="sr-only">Study tools and topics</h1>
+    <nav className="home-tools" aria-label="Study tools">
+      {HOME_TOOLS.map((tool, index) => <Link className={`home-tool${index === 0 ? ' home-tool--primary' : ''}`} to={tool.to} key={tool.to}>
+        <HomeIcon type={tool.icon} />
+        <span className="home-tool-label">{tool.label}<span className="home-arrow" aria-hidden="true">↗</span></span>
+      </Link>)}
+    </nav>
+    <nav className="home-topics" aria-label="Topics and foundations">
+      <Link to="/intro-philosophy-ethics">Foundations<span aria-hidden="true">→</span></Link>
+      {TOPICS.map(topic => <Link key={topic.slug} to={'/philosophy-ethics-revision/' + topic.slug}>{topic.name}<span aria-hidden="true">→</span></Link>)}
+    </nav>
+  </div>;
 }
 function TopicCards() { return <div className="card-grid">{TOPICS.map(t => <Feature key={t.slug} label="Topic" title={t.name} desc={t.desc} to={'/philosophy-ethics-revision/' + t.slug} cta="Read & practise" />)}</div>; }
 function TopicLibrary() {
