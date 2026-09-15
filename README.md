@@ -1,6 +1,6 @@
 # Sapere aude - philosophy study resources
 
-A static philosophy, ethics, and theology site with searchable resources, an essay planner, flashcards, logic practice, original practice questions, and an optional AI tutor served by a small Cloudflare Worker. AI is used for one purpose only: answering a pupil's study question on the tutor page. All study content is reviewed and fixed; nothing on the site is AI-generated.
+A static philosophy, ethics, and theology site with searchable resources, an essay planner, flashcards, logic practice, older question compilations, and an optional AI tutor served by a small Cloudflare Worker. Resource folders open directly onto reading and listening materials. The older question compilations are unverified, unofficial reference material.
 
 - Site: [slimsh8dy.github.io/eduresources](https://slimsh8dy.github.io/eduresources/)
 - Repository: [Slimsh8dy/eduresources](https://github.com/Slimsh8dy/eduresources)
@@ -29,13 +29,13 @@ No API key, paid inference server, or model installation is required. `npm ci` n
 | --- | --- |
 | `app/index.html`, `app/src/` | Editable Vite/React application source. |
 | `app/src/resources/catalog.js` | Single resource catalogue with stable IDs, routes, topic metadata, and review notes. |
-| `app/src/resources/questionData.json` | Shared source for the browser question bank and printable practice pack. |
+| `app/src/resources/questionData.json` | Archived original question data, no longer exposed in the site interface. |
 | `app/src/learning/` | Planner, logic practice, flashcards, reviewed content, and local saved-state helpers. |
 | `app/src/ai/` | Tutor page, the browser client for the Worker, grounding (catalogue and reviewed excerpts), and `config.js` with the Worker URL. |
 | `worker/` | The Cloudflare Worker that answers tutor questions with Workers AI. `worker/dist/tutor.js` is the single-file bundle for pasting into the Cloudflare dashboard. |
 | `dist/` | Intermediate Vite build, not the GitHub Pages publishing root. |
 | Root `index.html` and `assets/` | Generated files committed for static GitHub Pages hosting. Do not hand-edit these. |
-| `resources/` | Existing PDFs and WAV audio, plus the new original printable practice pack. |
+| `resources/` | Existing PDFs and WAV audio. Archived files are preserved for existing links. |
 | `scripts/publish-build.mjs` | Copies only the new generated HTML and assets into the publishing root. |
 | `tests/` | Content, state, tutor client, Worker, catalogue, and original-asset protection checks. |
 | `docs/CONTENT-REVIEW.md` | Corrections, provenance limitations, and caveats in legacy materials. |
@@ -87,13 +87,7 @@ Model information: [gpt-oss-120b on Workers AI](https://developers.cloudflare.co
 
 Essay drafts, flashcard review choices, logic attempts, and personal resource ratings use browser-local storage, where available. They are **not an account, backup, or cross-device sync**. The interface shows when saving is unavailable. Clearing site data, switching browser/profile, or using another device can remove or hide saved work. Export important essay plans as text or print/save them as PDF, including unfinished drafts.
 
-The new question bank is original study material, not an official exam paper, prediction, or mark scheme. Legacy PDF compilations remain available with their limitations labelled. When editing `questionData.json`, regenerate its PDF with Python and ReportLab:
-
-```sh
-python3 scripts/build-practice-pdf.py
-```
-
-Then render and inspect every PDF page, run `npm test`, and rebuild the site. Keep the browser and printable versions consistent.
+The Questions page contains only the three older PDF compilations, with their limitations labelled. The original question bank and its printable pack have been removed from the active interface and catalogue. Their source and existing files remain archived in the repository.
 
 ## Security and third-party materials
 

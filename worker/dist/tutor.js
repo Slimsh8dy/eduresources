@@ -109,6 +109,20 @@ var RESOURCES = [
 		"agape",
 		"essay"
 	], `${draft} Its claims about Dawkins and unavoidable selfishness should not be relied on as established science.`),
+	pdf("conscience-anthology", "Conscience — Extended Reading Anthology", "Conscience-Extended-Reading-Anthology", "Conscience", `${revision}/conscience`, "Primary-text extracts with introductions and AO1/AO2 study questions: Augustine, Gaudium et Spes and the Catechism, Newman, Aquinas on synderesis, conscientia and the erring conscience, Butler, Freud, Piaget–Kohlberg–Gilligan and Darwin, with synoptic essay titles and a glossary.", [
+		"Aquinas",
+		"Freud",
+		"Newman",
+		"Butler",
+		"Augustine",
+		"Darwin",
+		"Kohlberg",
+		"synderesis",
+		"super-ego",
+		"anthology",
+		"AO1",
+		"AO2"
+	], "Extracts are abridged (ellipses mark cuts) and some passages are editorial summaries rather than the thinker’s own words; quote from the cited editions in an essay."),
 	pdf("gender-roles-essay", "Christian Gender Roles — Critical Essay", "GS-1", "Gender & theology", `${revision}/gender-theology`, "An essay exploring Christian gender roles, equality, and interpretations of scripture.", [
 		"gender",
 		"Christianity",
@@ -139,11 +153,6 @@ var RESOURCES = [
 		"mind map",
 		"normative ethics",
 		"applied ethics"
-	]),
-	pdf("practice-questions-reviewed", "Philosophy & Ethics — Practice Questions", "Practice-Questions-Reviewed", "Practice questions", questions, "Original questions across nine topics with a practical self-review checklist. Not an official exam paper.", [
-		"essay",
-		"practice",
-		"reviewed"
 	]),
 	pdf("legacy-exam-questions", "Legacy Exam-Question Compilation", "Exam-Questions", "Practice questions", questions, "The original captured third-party question pack, retained for reference.", [
 		"legacy",

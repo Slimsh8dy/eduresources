@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAI } from './AiProvider.jsx';
 import { TUTOR_ENDPOINT, TUTOR_MODEL_LABEL, QUESTION_MAX_CHARS } from './config.js';
 import { resourceTarget } from './grounding.mjs';
+import { RESOURCE_BY_ID } from '../resources/catalog.js';
 
 /** The model sometimes answers in Markdown; the page shows text literally, so soften the symbols. */
 export function plainText(text) {
@@ -20,7 +21,8 @@ export function plainText(text) {
 
 function CatalogLinks({ resources }) {
   const base = import.meta.env?.BASE_URL || '/';
-  const links = resources.map(resource => ({ resource, target: resourceTarget(resource, base) })).filter(item => item.target);
+  const links = resources.map(resource => RESOURCE_BY_ID[resource.id]).filter(Boolean)
+    .map(resource => ({ resource, target: resourceTarget(resource, base) })).filter(item => item.target);
   if (!links.length) return null;
   return <p className="tutor-sources">Related on this site: {links.map(({ resource, target }, index) => <React.Fragment key={resource.id || target.href}>
     {index > 0 && ' · '}

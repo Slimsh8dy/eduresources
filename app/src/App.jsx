@@ -11,19 +11,19 @@ import { loadRatings, saveRatings } from './ratings.mjs';
 import './App.css';
 
 const TOPICS = [
-  { slug: 'utilitarianism', name: 'Utilitarianism', desc: 'Bentham, Mill, consequences and competing accounts of happiness.', recall: 'How do act and rule utilitarianism differ?', question: 'Can utilitarianism give a satisfactory account of justice?', flash: 'utilitarianism' },
-  { slug: 'kantianism', name: 'Kantianism', desc: 'Duty, good will and the Categorical Imperative.', recall: 'Why does Kant distinguish acting from duty from acting in accordance with duty?', question: 'Is acting from duty enough to make an action morally good?', flash: 'kantianism' },
-  { slug: 'augustine', name: 'Augustine', desc: 'Human nature, freedom, original sin and theological debate.', recall: 'How are responsibility and grace related in Augustine’s account?', question: 'Does Augustine offer a convincing account of human freedom?' },
-  { slug: 'natural-law', name: 'Natural Law', desc: 'Aquinas, practical reason and traditions of natural-law thought.', recall: 'How is natural-law ethics different from a natural-law theory of legal validity?', question: 'Does natural law provide a convincing basis for moral reasoning?' },
-  { slug: 'situation-ethics', name: 'Situation Ethics', desc: 'Agape, context and Fletcher’s account of moral decisions.', recall: 'How does situation ethics differ from both legalism and antinomianism?', question: 'Can agape alone guide moral decisions reliably?' },
-  { slug: 'conscience', name: 'Conscience', desc: 'Voice of God, act of reason, super-ego or evolved instinct: Aquinas, Freud and their rivals.', recall: 'Why, for Aquinas, can conscientia err when synderesis cannot?', question: '“Aquinas’s account of conscience is more convincing than Freud’s.” Discuss.' },
-  { slug: 'gender-theology', name: 'Gender & theology', desc: 'Contrasting draft arguments about gender, religion and Mary Daly.', recall: 'Which claims in these essays are descriptive, and which are normative?', question: 'Can religious traditions respond adequately to feminist criticism?' },
+  { slug: 'utilitarianism', name: 'Utilitarianism' },
+  { slug: 'kantianism', name: 'Kantianism' },
+  { slug: 'augustine', name: 'Augustine' },
+  { slug: 'natural-law', name: 'Natural Law' },
+  { slug: 'situation-ethics', name: 'Situation Ethics' },
+  { slug: 'conscience', name: 'Conscience' },
+  { slug: 'gender-theology', name: 'Gender & theology' },
 ];
 const PAGE_TITLES = {
   '/': 'Home', '/intro-philosophy-ethics': 'Introduction to Philosophy and Ethics',
   '/philosophy-fundamentals': 'Introduction to Logic', '/philosophy-fundamentals/logic-problems': 'Logic Practice',
   '/philosophy-basics': 'Essay Planner', '/philosophy-ethics-revision': 'Topic Library',
-  '/philosophy-ethics-mind-maps': 'Metaethics Mind Maps', '/philosophy-ethics-questions': 'Practice Questions',
+  '/philosophy-ethics-mind-maps': 'Metaethics Mind Maps', '/philosophy-ethics-questions': 'Questions',
   '/flashcards': 'Flashcards', '/ai-tutor': 'AI tutor',
   ...Object.fromEntries(TOPICS.map(t => ['/philosophy-ethics-revision/' + t.slug, t.name])),
 };
@@ -60,12 +60,13 @@ function RatingNote() {
   return <p className="rating-note">{recoveryBlocked ? `${message} New ratings last this visit.` : available ? 'Ratings are saved on this device only; they are not a public score.' : 'Storage is unavailable, so ratings last this visit only.'}</p>;
 }
 
-function ResourceCard({ resource: r, search = false, onNavigate }) {
+function ResourceCard({ resource: r, search = false, compact = false, onNavigate }) {
   const file = r.file ? asset(r.file) : null;
-  return <article className="card resource-card" id={search ? undefined : r.id}>
-    <div className="eyebrow">{r.type === 'external' ? 'Podcast · external' : r.type} {search && ` / ${r.topic}`}</div>
-    <h3>{r.title}</h3><p>{r.desc}</p>
-    {r.reviewNote && <p className="review-note"><strong>Reading note:</strong> {r.reviewNote}</p>}
+  const Heading = compact ? 'h2' : 'h3';
+  const description = <><p>{r.desc}</p>{r.reviewNote && <p className="review-note"><strong>Reading note:</strong> {r.reviewNote}</p>}</>;
+  return <article className={`card resource-card${compact ? ' resource-card--compact' : ''}`} id={search ? undefined : r.id}>
+    <div className="resource-heading"><div className="eyebrow">{r.type === 'external' ? 'Podcast · external' : r.type} {search && ` / ${r.topic}`}</div><Heading>{r.title}</Heading></div>
+    {!compact && description}
     {r.type === 'audio' && <audio controls preload="metadata"><source src={file} type="audio/wav" /><a href={file} download>Download audio</a></audio>}
     <div className="actions">
       {r.type === 'pdf' && <><a href={file} target="_blank" rel="noopener noreferrer">Read PDF <span className="sr-only">{r.title} (new tab)</span>↗</a><a href={file} download>Download PDF <span className="sr-only">{r.title}</span>↓</a></>}
@@ -74,10 +75,10 @@ function ResourceCard({ resource: r, search = false, onNavigate }) {
       {r.type === 'tool' && <Link to={r.route} onClick={onNavigate}>Open {r.title} →</Link>}
       {search && r.type !== 'tool' && <Link to={r.route} onClick={onNavigate}>View topic →</Link>}
     </div>
-    {r.type !== 'tool' && <PersonalRating resource={r} />}
+    {compact ? <details className="resource-details"><summary>Details<span className="sr-only"> about {r.title}</span></summary>{description}{r.type !== 'tool' && <><PersonalRating resource={r} /><RatingNote /></>}</details> : r.type !== 'tool' && <PersonalRating resource={r} />}
   </article>;
 }
-function ResourceGrid({ resources }) { return <><div className="card-grid">{resources.map(r => <ResourceCard key={r.id} resource={r} />)}</div>{resources.some(r => r.type !== 'tool') && <RatingNote />}</>; }
+function ResourceGrid({ resources }) { return <div className="resource-list">{resources.map(r => <ResourceCard key={r.id} resource={r} compact />)}</div>; }
 
 function SearchPanel({ onClose }) {
   const [query, setQuery] = useState('');
@@ -99,6 +100,7 @@ function SearchPanel({ onClose }) {
 function Shell() {
   const location = useLocation();
   const isHome = location.pathname === '/';
+  const isResourcePage = location.pathname.startsWith('/philosophy-ethics-revision') || ['/intro-philosophy-ethics', '/philosophy-fundamentals', '/philosophy-ethics-mind-maps', '/philosophy-ethics-questions'].includes(location.pathname);
   const main = useRef(null);
   const searchButton = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -131,7 +133,7 @@ function Shell() {
         <Route path="/ai-tutor" element={<AiTutorPage />} /><Route path="/local-ai" element={<Navigate to="/ai-tutor" replace />} /><Route path="*" element={<NotFound />} />
       </Routes>
     </main>
-    <SiteFooter compact={isHome} />
+    <SiteFooter compact={isHome || isResourcePage} />
     {showBackToTop && <button className="back-to-top" aria-label="Back to top" onClick={() => { window.scrollTo({ top: 0, behavior: 'instant' }); main.current?.focus({ preventScroll: true }); }}>↑</button>}
   </div>;
 }
@@ -144,7 +146,6 @@ function SiteFooter({ compact }) {
   </footer>;
 }
 
-function Feature({ label, title, desc, to, cta }) { return <article className="card feature"><span className="eyebrow">{label}</span><h3>{title}</h3><p>{desc}</p><Link to={to}>{cta} →</Link></article>; }
 const HOME_TOOLS = [
   { icon: 'book', label: 'Topic library', to: '/philosophy-ethics-revision' },
   { icon: 'cards', label: 'Flashcards', to: '/flashcards' },
@@ -155,6 +156,7 @@ const HOME_TOOLS = [
 ];
 function HomeIcon({ type }) {
   const shapes = {
+    folder: <path d="M3 8h10l3 4h13v15H3V8ZM3 8V5h9l3 3h11v4" />,
     book: <><path d="M16 8C12 5 7 5 3 6v20c4-1 9-1 13 2 4-3 9-3 13-2V6c-4-1-9-1-13 2Z" /><path d="M16 8v20M7 11c2-.2 4 .1 5 1M20 12c1-1 3-1.2 5-1" /></>,
     cards: <><path d="M10 4h17v20M6 8h17v20" /><rect x="2" y="12" width="17" height="18" rx="2" /><path d="M7 18h7M7 23h4" /></>,
     logic: <><circle cx="16" cy="6" r="3" /><circle cx="6" cy="26" r="3" /><circle cx="26" cy="26" r="3" /><path d="M16 9v7M6 23v-7h20v7" /></>,
@@ -179,19 +181,16 @@ function Home() {
     </nav>
   </div>;
 }
-function TopicCards() { return <div className="card-grid">{TOPICS.map(t => <Feature key={t.slug} label="Topic" title={t.name} desc={t.desc} to={'/philosophy-ethics-revision/' + t.slug} cta="Read & practise" />)}</div>; }
+function FolderLink({ to, title }) { return <Link className="folder-link" to={to}><HomeIcon type="folder" /><span>{title}</span><span className="folder-arrow" aria-hidden="true">→</span></Link>; }
 function TopicLibrary() {
-  return <><p className="eyebrow">Philosophy / Ethics / Theology</p><h1>Topic library</h1><p className="lede">Read the source material, retrieve an idea and turn it into an argument. Notes and draft essays are labelled so you can evaluate their claims critically.</p><TopicCards /><h2 className="spaced-heading">Foundations &amp; cross-topic tools</h2><div className="card-grid"><Feature label="Foundation" title="Philosophy and ethics" desc="Knowledge, moral knowledge and ethical justification." to="/intro-philosophy-ethics" cta="Open introductions" /><Feature label="Foundation" title="Introduction to Logic" desc="Arguments, validity, soundness and admissions preparation." to="/philosophy-fundamentals" cta="Open logic resources" /><Feature label="Visual revision" title="Metaethics mind maps" desc="Compare cognitivism and non-cognitivism before evaluating a position." to="/philosophy-ethics-mind-maps" cta="Open mind maps" /></div></>;
-}
-function LearningPath({ topic, recall, question, flash }) {
-  return <section className="learning-path" aria-label={`Study path for ${topic}`}><h2>Put the reading to work</h2><ol><li><strong>Read or listen</strong><p>Choose one resource below. Note its central claim and one reason offered for it.</p></li><li><strong>Retrieve</strong><p>{recall}</p>{flash ? <Link to={'/flashcards?topic=' + encodeURIComponent(flash)}>Review topic flashcards →</Link> : <p className="muted">Answer from memory, then check your notes.</p>}</li><li><strong>Apply</strong><p>Construct a counterexample or an objection. What would a defender say?</p><Link to="/philosophy-fundamentals/logic-problems">Check your reasoning →</Link></li><li><strong>Plan &amp; evaluate</strong><p>{question}</p><Link to={'/philosophy-basics?question=' + encodeURIComponent(question)}>Plan this question →</Link></li></ol></section>;
+  return <><h1>Topic library</h1><nav className="folder-grid" aria-label="Topic folders">{TOPICS.map(topic => <FolderLink key={topic.slug} title={topic.name} to={'/philosophy-ethics-revision/' + topic.slug} />)}</nav><h2 className="spaced-heading">Foundations</h2><nav className="folder-grid" aria-label="Foundation folders"><FolderLink title="Philosophy and ethics" to="/intro-philosophy-ethics" /><FolderLink title="Introduction to Logic" to="/philosophy-fundamentals" /><FolderLink title="Metaethics mind maps" to="/philosophy-ethics-mind-maps" /></nav></>;
 }
 function TopicPage() {
   const { topic } = useParams(); const t = TOPICS.find(item => item.slug === topic); if (!t) return <NotFound />;
-  return <><p className="eyebrow">Topic study</p><h1>{t.name}</h1><p className="lede">{t.desc}</p><LearningPath topic={t.name} recall={t.recall} question={t.question} flash={t.flash} /><h2 className="spaced-heading">Resources</h2><ResourceGrid resources={RESOURCES.filter(r => r.topic === t.name && r.type !== 'tool')} /></>;
+  return <><h1>{t.name}</h1><ResourceGrid resources={RESOURCES.filter(r => r.topic === t.name && r.type !== 'tool')} /></>;
 }
-function Intro() { return <><h1>Introduction to Philosophy and Ethics</h1><p className="lede">Start with knowledge, justification and what it could mean to know something morally.</p><LearningPath topic="Introduction" recall="What is the difference between holding a belief and having a justification for it?" question="Can moral beliefs count as knowledge?" /><h2 className="spaced-heading">Foundational reading</h2><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Introduction')} /></>; }
-function LogicIntro() { return <><h1>Introduction to Logic</h1><p className="lede">Learn to separate an argument’s form from the truth of its premises.</p><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Logic' && r.type === 'pdf')} /><section className="ai-banner"><div><h2>Now test the inference</h2><p>Try 12 reviewed problems. Write your reasoning, reveal the solution and revise your judgement.</p></div><Link className="btn" to="/philosophy-fundamentals/logic-problems">Start logic practice →</Link></section></>; }
-function MindMaps() { return <><h1>Metaethics mind maps</h1><p className="lede">Map the positions, then ask which account of moral language and truth is most convincing.</p><LearningPath topic="Metaethics" recall="Does a non-cognitivist treat a moral judgement as a truth-apt belief?" question="Does non-cognitivism explain moral language adequately?" /><h2 className="spaced-heading">Visual summaries</h2><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Metaethics')} /></>; }
+function Intro() { return <><h1>Introduction to Philosophy and Ethics</h1><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Introduction')} /></>; }
+function LogicIntro() { return <><h1>Introduction to Logic</h1><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Logic' && r.type === 'pdf')} /></>; }
+function MindMaps() { return <><h1>Metaethics mind maps</h1><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Metaethics')} /></>; }
 function NotFound() { return <section><h1>That page isn’t in the library.</h1><p>The link may be outdated. Your saved work hasn’t been changed.</p><Link className="btn" to="/">Return home →</Link></section>; }
 export default function App() { return <HashRouter><AiProvider><RatingProvider><Shell /></RatingProvider></AiProvider></HashRouter>; }

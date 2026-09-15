@@ -1,16 +1,7 @@
-/* Practice questions page. */
+/* Question compilation downloads. */
 .questions-page { max-width: var(--max); margin: 0 auto; }
-.questions-page .questions-notice { border-left: 2px solid var(--rule); padding: .2rem 0 .2rem .9rem; color: var(--muted); font-size: .92rem; }
-.question-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 1.2rem 0; }
-.question-guidance, .legacy-resources { border-top: 1px solid var(--hair); padding: .8rem 0; margin: 1.2rem 0; }
-.questions-page details li { margin: .4rem 0; }
-.question-filters { display: grid; grid-template-columns: minmax(160px, 1fr) 2fr; gap: 1rem; margin-top: 1.6rem; }
-.question-filters label { display: grid; gap: .35rem; font-weight: 500; }
-.question-filters input, .question-filters select { min-height: 42px; padding: .5rem .7rem; width: 100%; }
-.question-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; border-top: 1px solid var(--hair); }
-.practice-question { display: flex; flex-direction: column; border-bottom: 1px solid var(--hair); padding: 18px 0; }
-.question-category { font-size: .76rem; letter-spacing: .04em; text-transform: uppercase; font-weight: 500; color: var(--muted); margin: 0 0 .5rem; }
-.practice-question h2 { font-size: 1.05rem; line-height: 1.5; font-weight: 500; margin: 0 0 .8rem; }
-.question-plan-link { margin-top: auto; font-size: .92rem; display: inline-flex; align-items: center; gap: .35rem; }
-@media (max-width: 650px) { .question-grid, .question-filters { grid-template-columns: 1fr; } }
-@media print { .question-filters, .question-actions, .question-plan-link, .legacy-resources { display: none; } .question-grid { display: block; } .practice-question { break-inside: avoid; margin-bottom: .5rem; padding: .6rem 0; } }
+.questions-page h2 { max-width: 40ch; }
+.questions-notice { max-width: 82ch; margin-bottom: 1.6rem; color: var(--muted); font-size: .92rem; }
+.question-compilations { list-style: none; padding: 0; margin: 0; }
+.question-compilations h3 { line-height: 1.4; margin-bottom: 1rem; }
+.question-compilations .actions a { display: inline-flex; align-items: center; gap: .35rem; min-height: 44px; }
