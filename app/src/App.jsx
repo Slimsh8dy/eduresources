@@ -16,6 +16,7 @@ const TOPICS = [
   { slug: 'augustine', name: 'Augustine' },
   { slug: 'natural-law', name: 'Natural Law' },
   { slug: 'situation-ethics', name: 'Situation Ethics' },
+  { slug: 'metaethics', name: 'Metaethics' },
   { slug: 'conscience', name: 'Conscience' },
   { slug: 'gender-theology', name: 'Gender & theology' },
 ];
@@ -23,7 +24,7 @@ const PAGE_TITLES = {
   '/': 'Home', '/intro-philosophy-ethics': 'Introduction to Philosophy and Ethics',
   '/philosophy-fundamentals': 'Introduction to Logic', '/philosophy-fundamentals/logic-problems': 'Logic Practice',
   '/philosophy-basics': 'Essay Planner', '/philosophy-ethics-revision': 'Topic Library',
-  '/philosophy-ethics-mind-maps': 'Metaethics Mind Maps', '/philosophy-ethics-questions': 'Questions',
+  '/philosophy-ethics-questions': 'Questions',
   '/flashcards': 'Flashcards', '/ai-tutor': 'AI tutor',
   ...Object.fromEntries(TOPICS.map(t => ['/philosophy-ethics-revision/' + t.slug, t.name])),
 };
@@ -100,7 +101,7 @@ function SearchPanel({ onClose }) {
 function Shell() {
   const location = useLocation();
   const isHome = location.pathname === '/';
-  const isResourcePage = location.pathname.startsWith('/philosophy-ethics-revision') || ['/intro-philosophy-ethics', '/philosophy-fundamentals', '/philosophy-ethics-mind-maps', '/philosophy-ethics-questions'].includes(location.pathname);
+  const isResourcePage = location.pathname.startsWith('/philosophy-ethics-revision') || ['/intro-philosophy-ethics', '/philosophy-fundamentals', '/philosophy-ethics-questions'].includes(location.pathname);
   const main = useRef(null);
   const searchButton = useRef(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -128,7 +129,7 @@ function Shell() {
         <Route path="/" element={<Home />} /><Route path="/intro-philosophy-ethics" element={<Intro />} /><Route path="/philosophy-fundamentals" element={<LogicIntro />} />
         <Route path="/philosophy-fundamentals/logic-problems" element={<LogicProblems />} /><Route path="/philosophy-basics" element={<EssayPlanner />} />
         <Route path="/essay-planner" element={<Navigate to={'/philosophy-basics' + location.search} replace />} /><Route path="/philosophy-ethics-revision" element={<TopicLibrary />} />
-        <Route path="/philosophy-ethics-revision/:topic" element={<TopicPage />} /><Route path="/philosophy-ethics-mind-maps" element={<MindMaps />} />
+        <Route path="/philosophy-ethics-revision/:topic" element={<TopicPage />} /><Route path="/philosophy-ethics-mind-maps" element={<Navigate to="/philosophy-ethics-revision/metaethics" replace />} />
         <Route path="/philosophy-ethics-questions" element={<QuestionsPage />} /><Route path="/flashcards" element={<Flashcards />} />
         <Route path="/ai-tutor" element={<AiTutorPage />} /><Route path="/local-ai" element={<Navigate to="/ai-tutor" replace />} /><Route path="*" element={<NotFound />} />
       </Routes>
@@ -183,7 +184,7 @@ function Home() {
 }
 function FolderLink({ to, title }) { return <Link className="folder-link" to={to}><HomeIcon type="folder" /><span>{title}</span><span className="folder-arrow" aria-hidden="true">→</span></Link>; }
 function TopicLibrary() {
-  return <><h1>Topic library</h1><nav className="folder-grid" aria-label="Topic folders">{TOPICS.map(topic => <FolderLink key={topic.slug} title={topic.name} to={'/philosophy-ethics-revision/' + topic.slug} />)}</nav><h2 className="spaced-heading">Foundations</h2><nav className="folder-grid" aria-label="Foundation folders"><FolderLink title="Philosophy and ethics" to="/intro-philosophy-ethics" /><FolderLink title="Introduction to Logic" to="/philosophy-fundamentals" /><FolderLink title="Metaethics mind maps" to="/philosophy-ethics-mind-maps" /></nav></>;
+  return <><h1>Topic library</h1><nav className="folder-grid" aria-label="Topic folders">{TOPICS.map(topic => <FolderLink key={topic.slug} title={topic.name} to={'/philosophy-ethics-revision/' + topic.slug} />)}</nav><h2 className="spaced-heading">Foundations</h2><nav className="folder-grid" aria-label="Foundation folders"><FolderLink title="Philosophy and ethics" to="/intro-philosophy-ethics" /><FolderLink title="Introduction to Logic" to="/philosophy-fundamentals" /></nav></>;
 }
 function TopicPage() {
   const { topic } = useParams(); const t = TOPICS.find(item => item.slug === topic); if (!t) return <NotFound />;
@@ -191,6 +192,5 @@ function TopicPage() {
 }
 function Intro() { return <><h1>Introduction to Philosophy and Ethics</h1><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Introduction')} /></>; }
 function LogicIntro() { return <><h1>Introduction to Logic</h1><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Logic' && r.type === 'pdf')} /></>; }
-function MindMaps() { return <><h1>Metaethics mind maps</h1><ResourceGrid resources={RESOURCES.filter(r => r.topic === 'Metaethics')} /></>; }
 function NotFound() { return <section><h1>That page isn’t in the library.</h1><p>The link may be outdated. Your saved work hasn’t been changed.</p><Link className="btn" to="/">Return home →</Link></section>; }
 export default function App() { return <HashRouter><AiProvider><RatingProvider><Shell /></RatingProvider></AiProvider></HashRouter>; }

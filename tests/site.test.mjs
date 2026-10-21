@@ -37,9 +37,9 @@ const DUPLICATE_PDFS = [
 ];
 const STATIC_ROUTES = new Set([
   '/intro-philosophy-ethics', '/philosophy-fundamentals', '/philosophy-fundamentals/logic-problems',
-  '/philosophy-basics', '/philosophy-ethics-mind-maps', '/philosophy-ethics-questions', '/flashcards', '/ai-tutor',
+  '/philosophy-basics', '/philosophy-ethics-questions', '/flashcards', '/ai-tutor',
 ]);
-const TOPIC_ROUTES = new Set(['utilitarianism', 'kantianism', 'augustine', 'natural-law', 'situation-ethics', 'conscience', 'gender-theology']);
+const TOPIC_ROUTES = new Set(['utilitarianism', 'kantianism', 'augustine', 'natural-law', 'situation-ethics', 'metaethics', 'conscience', 'gender-theology']);
 
 test('site catalogue IDs and resource destinations are complete', () => {
   assert.equal(new Set(RESOURCES.map(resource => resource.id)).size, RESOURCES.length);
@@ -95,4 +95,37 @@ test('the Conscience topic has its anthology as a downloadable PDF on its own to
   assert.ok(bytes.length > 100_000, 'file looks truncated');
   assert.match(anthology.desc, /Aquinas/);
   assert.ok(anthology.tags.includes('Freud'));
+});
+
+test('the Utilitarianism and Metaethics booklets are complete PDFs at the top of their topic pages', () => {
+  const booklets = [
+    { id: 'utilitarianism-booklet', topic: 'Utilitarianism', slug: 'utilitarianism', file: 'resources/Utilitarianism-Booklet.pdf', thinkers: ['Bentham', 'Mill', 'Nozick', 'Smart', 'Harris'] },
+    { id: 'metaethics-booklet', topic: 'Metaethics', slug: 'metaethics', file: 'resources/Metaethics-Booklet.pdf', thinkers: ['Moore', 'Hume', 'Ross', 'Ayer', 'Stevenson', 'Hare', 'Mackie'] },
+  ];
+  for (const expected of booklets) {
+    const booklet = RESOURCES.find(resource => resource.id === expected.id);
+    assert.ok(booklet, `${expected.id}: catalogue entry missing`);
+    assert.equal(booklet.type, 'pdf');
+    assert.equal(booklet.topic, expected.topic);
+    assert.equal(booklet.route, `/philosophy-ethics-revision/${expected.slug}`);
+    assert.equal(booklet.file, expected.file);
+    assert.ok(booklet.reviewNote, `${expected.id}: reading note missing`);
+    for (const thinker of expected.thinkers) assert.ok(booklet.tags.includes(thinker), `${expected.id}: ${thinker} not tagged`);
+    const bytes = readFileSync(path.join(ROOT, booklet.file));
+    assert.equal(bytes.subarray(0, 5).toString(), '%PDF-', `${booklet.file} is not a PDF`);
+    assert.match(bytes.subarray(-64).toString('latin1'), /%%EOF\s*$/, `${booklet.file} looks truncated`);
+    assert.ok(bytes.length > 1_000_000, `${booklet.file} is smaller than expected`);
+    const onPage = RESOURCES.filter(resource => resource.topic === expected.topic && resource.type !== 'tool');
+    assert.equal(onPage[0].id, expected.id, `${expected.id} should head its topic page`);
+  }
+});
+
+test('Metaethics is a topic of its own with the booklet and the mind maps, and the old mind-maps link redirects to it', () => {
+  const metaethics = RESOURCES.filter(resource => resource.topic === 'Metaethics');
+  assert.deepEqual(metaethics.map(resource => resource.id), ['metaethics-booklet', 'metaethics-cognitivism-map', 'metaethics-noncognitivism-map', 'ethics-overview-map']);
+  for (const resource of metaethics) assert.equal(resource.route, '/philosophy-ethics-revision/metaethics');
+  assert.ok(!RESOURCES.some(resource => resource.route === '/philosophy-ethics-mind-maps'), 'a resource still points at the retired mind-maps page');
+  const app = readFileSync(path.join(ROOT, 'app/src/App.jsx'), 'utf8');
+  assert.match(app, /\{ slug: 'metaethics', name: 'Metaethics' \}/);
+  assert.match(app, /<Route path="\/philosophy-ethics-mind-maps" element=\{<Navigate to="\/philosophy-ethics-revision\/metaethics" replace \/>\} \/>/);
 });

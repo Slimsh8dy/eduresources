@@ -55,6 +55,21 @@ var RESOURCES = [
 		"arguments"
 	]),
 	pdf("logic-oxbridge", "Oxbridge Logic Preparation", "Oxbridge-Logic-Preparation", "Logic", "/philosophy-fundamentals", "Existing logic preparation exercises; not an official admissions publication.", ["admissions", "arguments"]),
+	pdf("utilitarianism-booklet", "Utilitarianism Booklet", "Utilitarianism-Booklet", "Utilitarianism", `${revision}/utilitarianism`, "Readings with introductions, commentary and Comprehension, Analysis, Synthesis and Evaluation questions (AO1/AO2): Bentham on utility, the hedonic calculus and punishment; Mill on higher pleasures, rules, the proof and justice; Nozick, Smart and Harris as challenges; four essay plans with argument maps.", [
+		"Bentham",
+		"Mill",
+		"hedonic calculus",
+		"act utilitarianism",
+		"rule utilitarianism",
+		"higher pleasures",
+		"Nozick",
+		"Smart",
+		"Harris",
+		"justice",
+		"booklet",
+		"AO1",
+		"AO2"
+	], "Extracts are abridged (ellipses mark cuts); quote from the cited editions in an essay. The four essay plans are possible approaches to OCR-style questions, not official model answers."),
 	pdf("utilitarianism-notes", "Utilitarianism — Revision Notes", "Utilitarianism", "Utilitarianism", `${revision}/utilitarianism`, "Concise notes on core utilitarian ideas and key distinctions.", [
 		"Bentham",
 		"Mill",
@@ -147,9 +162,26 @@ var RESOURCES = [
 		"GT-2",
 		"essay"
 	], `${draft} Distinguish challenging a conditional’s premise from the formal fallacy called denying the antecedent.`),
-	pdf("metaethics-cognitivism-map", "Metaethics — Cognitivism", "Metaethics-Cognitivism", "Metaethics", "/philosophy-ethics-mind-maps", "An overview of cognitivist positions in metaethics.", ["mind map", "moral language"]),
-	pdf("metaethics-noncognitivism-map", "Metaethics — Non-Cognitivism", "Metaethics-Non-Cognitivism", "Metaethics", "/philosophy-ethics-mind-maps", "An overview of non-cognitivist positions in metaethics.", ["mind map", "moral language"]),
-	pdf("ethics-overview-map", "Ethics — Overview Map", "Ethics-mind-map", "Metaethics", "/philosophy-ethics-mind-maps", "A one-page map distinguishing normative ethics, applied ethics, and metaethics.", [
+	pdf("metaethics-booklet", "Metaethics Booklet", "Metaethics-Booklet", "Metaethics", `${revision}/metaethics`, "Readings with introductions, commentary and Comprehension, Analysis, Synthesis and Evaluation questions (AO1/AO2): naturalism and Moore’s open question, Hume on is and ought, Moore and Ross on intuitionism, Ayer and Stevenson on emotivism, Hare and the Frege–Geach problem, Mackie’s error theory; glossary and four essay plans on past OCR questions, with argument maps.", [
+		"naturalism",
+		"intuitionism",
+		"emotivism",
+		"Moore",
+		"Hume",
+		"Ross",
+		"Ayer",
+		"Stevenson",
+		"Hare",
+		"Mackie",
+		"open question",
+		"error theory",
+		"booklet",
+		"AO1",
+		"AO2"
+	], "Extracts are abridged (ellipses mark cuts); quote from the cited editions in an essay. The four essay plans answer past OCR questions but are possible approaches, not official model answers."),
+	pdf("metaethics-cognitivism-map", "Metaethics — Cognitivism", "Metaethics-Cognitivism", "Metaethics", `${revision}/metaethics`, "An overview of cognitivist positions in metaethics.", ["mind map", "moral language"]),
+	pdf("metaethics-noncognitivism-map", "Metaethics — Non-Cognitivism", "Metaethics-Non-Cognitivism", "Metaethics", `${revision}/metaethics`, "An overview of non-cognitivist positions in metaethics.", ["mind map", "moral language"]),
+	pdf("ethics-overview-map", "Ethics — Overview Map", "Ethics-mind-map", "Metaethics", `${revision}/metaethics`, "A one-page map distinguishing normative ethics, applied ethics, and metaethics.", [
 		"mind map",
 		"normative ethics",
 		"applied ethics"
