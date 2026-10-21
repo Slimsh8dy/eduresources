@@ -35,7 +35,7 @@ No API key, paid inference server, or model installation is required. `npm ci` n
 | `worker/` | The Cloudflare Worker that answers tutor questions with Workers AI. `worker/dist/tutor.js` is the single-file bundle for pasting into the Cloudflare dashboard. |
 | `dist/` | Intermediate Vite build, not the GitHub Pages publishing root. |
 | Root `index.html` and `assets/` | Generated files committed for static GitHub Pages hosting. Do not hand-edit these. |
-| `resources/` | Existing PDFs and WAV audio. Archived files are preserved for existing links. |
+| `resources/` | PDFs and audio (WAV recordings and one M4A debate). Archived files are preserved for existing links. |
 | `scripts/publish-build.mjs` | Copies only the new generated HTML and assets into the publishing root. |
 | `tests/` | Content, state, tutor client, Worker, catalogue, and original-asset protection checks. |
 | `docs/CONTENT-REVIEW.md` | Corrections, provenance limitations, and caveats in legacy materials. |
@@ -50,7 +50,7 @@ The previous deployed `gh-pages` revision was `d66d244edc276b7cfc7cb527e9d6cb107
 
 GitHub Pages publishes the root of `gh-pages`. For an update, work on a review branch, run the tests/build/preview, inspect the generated diff, and include both the source changes and generated root HTML/assets in the reviewed commit. Publish the approved commit to `gh-pages` through the usual repository workflow, then verify the live subdirectory URL and AI worker loading. Do not publish the raw `app/index.html` as the root page.
 
-Tests preserve the original 58 PDF/audio filenames, the complete tracked resource inventory, and immutable SHA-256 checks for the six linked WAV files and their duplicate copies. Audio changes are outside this upgrade's scope.
+Tests preserve the original PDF/audio filenames, the complete tracked resource inventory, and immutable SHA-256 checks for the five original WAV recordings and their duplicate copies. The one deliberate removal is listed in `RETIRED` in `tests/site.test.mjs`: in October 2026 the Defender–Challenger WAV and its duplicate were replaced by `resources/Moral-rules-versus-the-greater-good.m4a`.
 
 ### Restore an earlier release
 

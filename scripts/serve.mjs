@@ -4,7 +4,7 @@ import { stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const root = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.map': 'application/json', '.pdf': 'application/pdf', '.wav': 'audio/wav', '.wasm': 'application/wasm' };
+const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.map': 'application/json', '.pdf': 'application/pdf', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.wasm': 'application/wasm' };
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');

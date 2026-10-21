@@ -68,7 +68,7 @@ function ResourceCard({ resource: r, search = false, compact = false, onNavigate
   return <article className={`card resource-card${compact ? ' resource-card--compact' : ''}`} id={search ? undefined : r.id}>
     <div className="resource-heading"><div className="eyebrow">{r.type === 'external' ? 'Podcast · external' : r.type} {search && ` / ${r.topic}`}</div><Heading>{r.title}</Heading></div>
     {!compact && description}
-    {r.type === 'audio' && <audio controls preload="metadata"><source src={file} type="audio/wav" /><a href={file} download>Download audio</a></audio>}
+    {r.type === 'audio' && <audio controls preload="metadata"><source src={file} type={file.endsWith('.m4a') ? 'audio/mp4' : 'audio/wav'} /><a href={file} download>Download audio</a></audio>}
     <div className="actions">
       {r.type === 'pdf' && <><a href={file} target="_blank" rel="noopener noreferrer">Read PDF <span className="sr-only">{r.title} (new tab)</span>↗</a><a href={file} download>Download PDF <span className="sr-only">{r.title}</span>↓</a></>}
       {r.type === 'audio' && <a href={file} download>↓ Download Audio <span className="sr-only">{r.title}</span></a>}

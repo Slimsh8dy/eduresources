@@ -16,7 +16,7 @@ test('catalog has unique stable IDs and complete, safe destinations', () => {
     assert.equal(RESOURCE_BY_ID[item.id], item);
     if (['pdf', 'audio'].includes(item.type)) {
       assert.ok(item.file.startsWith('resources/') && !item.file.includes('..'));
-      assert.ok(!/ 2\.(pdf|wav)$/.test(item.file));
+      assert.ok(!/ 2\.(pdf|wav|m4a)$/.test(item.file));
       assert.ok(existsSync(fileURLToPath(new URL(`../${item.file}`, import.meta.url))), item.file);
       files.push(item.file);
     }
@@ -25,10 +25,10 @@ test('catalog has unique stable IDs and complete, safe destinations', () => {
   assert.equal(new Set(files).size, files.length);
 });
 
-test('catalog preserves the six original audio references only', () => {
+test('catalog links the expected audio recordings', () => {
   assert.deepEqual(RESOURCES.filter(item => item.type === 'audio').map(item => item.file).sort(), [
-    'Bentham-intro', 'Bentham-strengths-weaknesses', 'Mill-summary', 'Defender-Challenger', 'Kant-SEP1', 'Kant-SEP2',
-  ].map(name => `resources/${name}.wav`).sort());
+    'Bentham-intro.wav', 'Bentham-strengths-weaknesses.wav', 'Mill-summary.wav', 'Kant-SEP1.wav', 'Kant-SEP2.wav', 'Moral-rules-versus-the-greater-good.m4a',
+  ].map(name => `resources/${name}`).sort());
 });
 
 test('newly exposed draft and legacy sources carry visible caveats', () => {

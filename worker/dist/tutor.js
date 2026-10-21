@@ -17,16 +17,21 @@ var pdf = (id, title, name, topic, route, desc, tags = [], reviewNote = "") => (
 	],
 	...reviewNote ? { reviewNote } : {}
 });
-var audio = (id, title, name, topic, route, desc) => ({
+var audio = (id, title, name, topic, route, desc, { ext = "wav", tags = [], reviewNote = "" } = {}) => ({
 	id,
 	title,
 	desc,
 	route,
-	file: `resources/${name}.wav`,
+	file: `resources/${name}.${ext}`,
 	type: "audio",
 	section: `Philosophy, ethics & theology › ${topic}`,
 	topic,
-	tags: ["audio", "listen"]
+	tags: [
+		"audio",
+		"listen",
+		...tags
+	],
+	...reviewNote ? { reviewNote } : {}
 });
 var podcast = (id, title, url, topic, route) => ({
 	id,
@@ -84,7 +89,19 @@ var RESOURCES = [
 	audio("bentham-intro-audio", "Bentham — Intro", "Bentham-intro", "Utilitarianism", `${revision}/utilitarianism`, "Short introduction to Bentham's version of utilitarianism."),
 	audio("bentham-evaluation-audio", "Bentham — Strengths & Weaknesses", "Bentham-strengths-weaknesses", "Utilitarianism", `${revision}/utilitarianism`, "Key advantages and criticisms of Bentham's approach."),
 	audio("mill-summary-audio", "Mill — Summary", "Mill-summary", "Utilitarianism", `${revision}/utilitarianism`, "Brief overview of J. S. Mill's refinements to utilitarianism."),
-	audio("utilitarianism-debate-audio", "Defender–Challenger", "Defender-Challenger", "Utilitarianism", `${revision}/utilitarianism`, "A defender of utilitarianism versus a challenger."),
+	audio("moral-rules-greater-good-audio", "Moral Rules versus the Greater Good", "Moral-rules-versus-the-greater-good", "Utilitarianism", `${revision}/utilitarianism`, "A 22-minute debate for Year 12 between a rule utilitarian and an act utilitarian: the transplant case, Lyons’s collapse objection, Smart’s charge of rule-worship, Singer on impartial giving and the demandingness problem, and where the two views agree.", {
+		ext: "m4a",
+		tags: [
+			"act utilitarianism",
+			"rule utilitarianism",
+			"debate",
+			"Smart",
+			"Lyons",
+			"Singer",
+			"Hooker"
+		],
+		reviewNote: "AI-generated discussion; check its claims against the Utilitarianism Booklet and the original texts."
+	}),
 	podcast("utilitarianism-podcast", "In Our Time — Utilitarianism", "https://podcasts.apple.com/gb/podcast/in-our-time/id73330895?i=1000344513660", "Utilitarianism", `${revision}/utilitarianism`),
 	pdf("kant-main-concepts", "Kant — Main Concepts", "Kant-Main-Concepts", "Kantianism", `${revision}/kantianism`, "Good will, duty, maxims, and the Categorical Imperative.", ["Kant", "deontology"]),
 	pdf("kant-extended", "Kantian Ethics — Extended Reading", "Kant-extra", "Kantianism", `${revision}/kantianism`, "An existing review of Kantian principles, supporting arguments, and objections.", [

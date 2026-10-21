@@ -16,11 +16,13 @@ const git = args => execFileSync('git', args, { cwd: ROOT, maxBuffer: 100 * 1024
 const AUDIO_BASELINE = {
   'Bentham-intro.wav': 'b85b3f6b6c75e3850dcef0cc6ce2a0bf1f014c3262833d5b0c65b0ac3015069d',
   'Bentham-strengths-weaknesses.wav': '3599083efeb152624fd56d964603b221cb4764d86bff47cbc4d73e6a4d886051',
-  'Defender-Challenger.wav': '0edca8a8814c1c281d533daf508d67b13c9e9f7f06099b754ea629afa2a01e0c',
   'Kant-SEP1.wav': '7f5cb9245d5a95e7eb3bee56ed46918f10a34936efcb0350363c25e106795f04',
   'Kant-SEP2.wav': '692fd2a901e0770fee19d9453a353fbc718b5c93dbade6ce9c40c31a2f47a055',
   'Mill-summary.wav': 'de17acd85c6d654833fdf8d129d2ead11f50e74c084d1bb9bc7ebcc666af3625',
 };
+// Retired at the site owner's request (21 October 2026): the Defender–Challenger debate and its
+// duplicate copy were replaced by one recording, resources/Moral-rules-versus-the-greater-good.m4a.
+const RETIRED = new Set(['resources/Defender-Challenger.wav', 'resources/Defender-Challenger 2.wav']);
 const EXISTING_PDFS = [
   'Augustine-Notes', 'Christianity-exam-questions', 'Ethics-Questions', 'Ethics-mind-map', 'Exam-Questions',
   'GS-1', 'GS-2', 'GT-1', 'GT-2', 'Introduction-to-Logic', 'Kant-Main-Concepts', 'Kant-extra',
@@ -57,7 +59,10 @@ test('site catalogue IDs and resource destinations are complete', () => {
 test('every resource tracked at HEAD is retained', () => {
   const paths = git(['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', 'resources']).toString('utf8').split('\0').filter(Boolean);
   assert.ok(paths.length >= 59, 'Expected the original deployed resource inventory');
-  for (const resourcePath of paths) assert.ok(existsSync(path.join(ROOT, resourcePath)), `Removed existing asset: ${resourcePath}`);
+  for (const resourcePath of paths) {
+    if (RETIRED.has(resourcePath)) continue;
+    assert.ok(existsSync(path.join(ROOT, resourcePath)), `Removed existing asset: ${resourcePath}`);
+  }
 });
 
 test('original PDF and duplicate asset filenames remain available after a new commit', () => {
@@ -67,12 +72,12 @@ test('original PDF and duplicate asset filenames remain available after a new co
     ...Object.keys(AUDIO_BASELINE),
     ...Object.keys(AUDIO_BASELINE).map(name => name.replace('.wav', ' 2.wav')),
   ];
-  assert.equal(filenames.length, 58);
+  assert.equal(filenames.length, 56);
   for (const filename of filenames) assert.ok(existsSync(path.join(ROOT, 'resources', filename)), filename);
 });
 
-test('all six linked audio files are byte-identical to HEAD and the original deployed baseline', () => {
-  assert.deepEqual(RESOURCES.filter(resource => resource.type === 'audio').map(resource => path.basename(resource.file)).sort(), Object.keys(AUDIO_BASELINE).sort());
+test('the five original WAV recordings are byte-identical to HEAD and the original deployed baseline', () => {
+  assert.deepEqual(RESOURCES.filter(resource => resource.type === 'audio' && resource.file.endsWith('.wav')).map(resource => path.basename(resource.file)).sort(), Object.keys(AUDIO_BASELINE).sort());
   for (const [filename, expected] of Object.entries(AUDIO_BASELINE)) {
     const asset = `resources/${filename}`;
     const workingHash = sha256(readFileSync(path.join(ROOT, asset)));
@@ -128,4 +133,28 @@ test('Metaethics is a topic of its own with the booklet and the mind maps, and t
   const app = readFileSync(path.join(ROOT, 'app/src/App.jsx'), 'utf8');
   assert.match(app, /\{ slug: 'metaethics', name: 'Metaethics' \}/);
   assert.match(app, /<Route path="\/philosophy-ethics-mind-maps" element=\{<Navigate to="\/philosophy-ethics-revision\/metaethics" replace \/>\} \/>/);
+});
+
+test('Moral Rules versus the Greater Good replaces the Defender–Challenger debate on the Utilitarianism page', () => {
+  const debate = RESOURCES.find(resource => resource.id === 'moral-rules-greater-good-audio');
+  assert.ok(debate, 'catalogue entry missing');
+  assert.equal(debate.type, 'audio');
+  assert.equal(debate.topic, 'Utilitarianism');
+  assert.equal(debate.route, '/philosophy-ethics-revision/utilitarianism');
+  assert.equal(debate.file, 'resources/Moral-rules-versus-the-greater-good.m4a');
+  assert.match(debate.reviewNote, /AI-generated/);
+  const bytes = readFileSync(path.join(ROOT, debate.file));
+  const atoms = [];
+  for (let pos = 0; pos + 8 <= bytes.length && atoms.length < 8;) {
+    let size = bytes.readUInt32BE(pos);
+    atoms.push(bytes.toString('latin1', pos + 4, pos + 8));
+    if (size === 1) size = Number(bytes.readBigUInt64BE(pos + 8));
+    if (size < 8) break;
+    pos += size;
+  }
+  assert.equal(atoms[0], 'ftyp', 'not an MP4/M4A file');
+  assert.ok(atoms.includes('moov') && atoms.indexOf('moov') < atoms.indexOf('mdat'), 'the index (moov) must come before the audio (mdat) so it streams');
+  assert.ok(bytes.length > 30_000_000, 'file looks truncated');
+  assert.ok(!RESOURCES.some(resource => resource.id === 'utilitarianism-debate-audio' || /Defender-Challenger/.test(resource.file || '')), 'old debate still linked');
+  for (const retired of RETIRED) assert.ok(!existsSync(path.join(ROOT, retired)), `${retired} should have been removed`);
 });
