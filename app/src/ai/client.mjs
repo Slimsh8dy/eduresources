@@ -70,6 +70,24 @@ function writeDaily(storage, daily, now) {
   } catch { /* best effort */ }
 }
 
+/** The earlier exchanges sent with a question so a follow-up makes sense: the newest few, trimmed to a
+ *  short head of each question, the gist of each answer, and a byte budget for the whole transcript
+ *  (oldest turns dropped first). Mirrors LIMITS in worker/src/tutor.js, which trims in the same way. */
+export const HISTORY_TURNS = 3;
+export const HISTORY_QUESTION_CHARS = 600;
+export const HISTORY_ANSWER_CHARS = 1500;
+export const HISTORY_BYTES = 9000;
+const headOf = (text, n) => Array.from(text.trim()).slice(0, n).join(''); // by code point, so no emoji is cut in half
+const utf8Length = text => new TextEncoder().encode(text).length;
+export function conversationHistory(exchanges = []) {
+  const turns = exchanges
+    .filter(item => item && typeof item.question === 'string' && typeof item.answer === 'string' && item.question.trim() && item.answer.trim())
+    .slice(-HISTORY_TURNS)
+    .map(item => ({ question: headOf(item.question, HISTORY_QUESTION_CHARS), answer: headOf(item.answer, HISTORY_ANSWER_CHARS) }));
+  while (turns.length && turns.reduce((sum, turn) => sum + utf8Length(turn.question) + utf8Length(turn.answer), 0) > HISTORY_BYTES) turns.shift();
+  return turns;
+}
+
 export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs = 90_000, clientId, storage } = {}) {
   const doFetch = fetchImpl || ((...args) => globalThis.fetch(...args));
   const id = clientId || browserId(storage);
@@ -123,15 +141,24 @@ export function createTutorClient({ endpoint = '', fetch: fetchImpl, timeoutMs =
     publish({ status: 'error', error: error.message || FALLBACK_MESSAGES.bad, detail: typeof error.detail === 'string' ? error.detail : '' });
   }
 
-  /** Streams an answer. onDelta receives text as it arrives; resolves with the whole exchange. */
-  async function ask(question, { onDelta } = {}) {
+  /** Streams an answer. onDelta receives text as it arrives; resolves with the whole exchange.
+   *  history is the page's earlier exchanges ({ question, answer }), oldest first; the newest few go along. */
+  async function ask(question, { onDelta, history } = {}) {
     const text = String(question || '').trim();
     if (!text) throw new Error('Enter a question first.');
     const run = begin();
     let answer = '';
     let resources = [];
     try {
-      const response = await post('/ask', { question: text }, run.signal);
+      const turns = conversationHistory(history);
+      let response;
+      try {
+        response = await post('/ask', turns.length ? { question: text, history: turns } : { question: text }, run.signal);
+      } catch (error) {
+        // A Worker that cannot take the transcript (too large for it, or an older deployment) still gets the question.
+        if (!turns.length || error.status !== 413) throw error;
+        response = await post('/ask', { question: text }, run.signal);
+      }
       const type = response.headers.get('Content-Type') || '';
       if (type.includes('text/event-stream') && response.body) {
         let failure = null;
