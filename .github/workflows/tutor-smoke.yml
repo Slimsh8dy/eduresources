@@ -55,6 +55,7 @@ jobs:
 
       - name: Report
         if: always()
+        # Written to the run summary and echoed to the log, which is readable with `gh run view --log`.
         run: |
           {
             echo "## Tutor smoke test"
@@ -77,4 +78,4 @@ jobs:
             jq -r '.answer' follow.json 2>/dev/null | sed 's/^/> /'
             echo
             echo "Questions left today for this client: $(jq -r '.remaining' follow.json 2>/dev/null) of $(jq -r '.allowance' follow.json 2>/dev/null)"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
