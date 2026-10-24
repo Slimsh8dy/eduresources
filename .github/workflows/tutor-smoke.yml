@@ -31,10 +31,10 @@ jobs:
       - name: Ask the question
         run: |
           body=$(jq -cn --arg q "$QUESTION" '{question: $q}')
-          curl -sS --max-time 120 -o answer.json -w '%{http_code} %{time_total}' -X POST \
+          curl -sS --max-time 120 -o answer.json -w '%{http_code} %{time_total}\n' -X POST \
             -H 'Content-Type: application/json' -H "Origin: $ORIGIN" -H "X-Tutor-Client: $CLIENT" \
             -d "$body" "$TUTOR/ask" > status.txt
-          read -r status seconds < status.txt
+          read -r status seconds < status.txt  # the newline above matters: read fails at EOF without it, and the shell is -e
           echo "first answer: HTTP $status in ${seconds}s"
           test "$status" = 200
           jq -e '.answer | length > 0' answer.json > /dev/null
@@ -46,7 +46,7 @@ jobs:
             '{question: "Is that right? Answer in one sentence and name the thinker you were just discussing.", history: [{question: $q, answer: $a[0].answer}]}')
           curl -sS --max-time 120 -o follow.json -X POST \
             -H 'Content-Type: application/json' -H "Origin: $ORIGIN" -H "X-Tutor-Client: $CLIENT" \
-            -d "$body" "$TUTOR/ask" -w '%{http_code} %{time_total}' > status2.txt
+            -d "$body" "$TUTOR/ask" -w '%{http_code} %{time_total}\n' > status2.txt
           read -r status seconds < status2.txt
           echo "follow-up: HTTP $status in ${seconds}s"
           test "$status" = 200
