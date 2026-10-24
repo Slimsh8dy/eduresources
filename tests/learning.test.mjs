@@ -11,9 +11,12 @@ function memoryStorage() {
 test('all existing teaching items retain stable identities, and synthesis is added', () => {
   assert.deepEqual(LOGIC_PROBLEMS.map(problem => problem.id), Array.from({length: 12}, (_, i) => i + 1));
   assert.deepEqual(FLASHCARDS.map(card => card.id), Array.from({length: 30}, (_, i) => i + 1));
-  assert.equal(ESSAY_STEPS.length, 25);
-  assert.equal(new Set(ESSAY_STEPS.map(step => step.id)).size, 25);
+  assert.equal(ESSAY_STEPS.length, 26);
+  assert.equal(new Set(ESSAY_STEPS.map(step => step.id)).size, 26);
   assert.equal(ESSAY_STEPS.at(-1).id, 'final_synthesis');
+  // AO1 (16 of 40 marks) is planned explicitly, straight after the thesis.
+  assert.equal(ESSAY_STEPS[2].id, 'scholars');
+  assert.match(ESSAY_STEPS[2].prompt, /thinkers, texts and quotations/);
   for (const problem of LOGIC_PROBLEMS) {
     assert.ok(problem.checklist.length >= 3);
     assert.ok(problem.sources.length > 0);
@@ -71,10 +74,11 @@ test('logic answer, reveal state, and revision persist together without grading'
 
 test('incomplete export labels all missing prompts and treats input as literal text', () => {
   const text = makeEssayText({essay_q: '<img src=x onerror=alert(1)> & "question"', thesis: 'First line\nSecond line'}, ESSAY_STEPS);
-  assert.match(text, /2\/25 prompts completed — DRAFT \/ INCOMPLETE/);
+  assert.match(text, /2\/26 prompts completed — DRAFT \/ INCOMPLETE/);
   assert.ok(text.includes('<img src=x onerror=alert(1)> & "question"'));
   assert.ok(text.includes('First line\nSecond line'));
-  assert.equal((text.match(/\[Not yet completed\]/g) || []).length, 23);
+  assert.equal((text.match(/\[Not yet completed\]/g) || []).length, 24);
+  assert.ok(text.includes('Scholarship — Scholars & quotations'));
   assert.ok(text.includes('Final judgement — Overall conclusion'));
 });
 

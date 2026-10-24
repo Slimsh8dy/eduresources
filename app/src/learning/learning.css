@@ -28,6 +28,8 @@
 .learn-footer { margin-top: 2.5rem; border-top: 1px solid var(--hair); padding-top: 1rem; }
 .learn-footer button { border: 0; padding: 0; color: var(--muted); text-decoration: underline; font-weight: 400; }
 .learn-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.learn-keys { font-size: .82rem; margin: -.2rem 0 1rem; }
+.learn-keys kbd { font: inherit; font-size: .9em; border: 1px solid var(--hair); border-radius: 4px; padding: 0 .35em; }
 
 /* Essay planner */
 .essay-layout { display: grid; grid-template-columns: minmax(200px, .3fr) minmax(0, 1fr); gap: 2.5rem; align-items: start; }

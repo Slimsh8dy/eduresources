@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>EduResources — Philosophy, Ethics &amp; Theology</title>
+    <script>
+      // GitHub Pages serves this page for any address it has no file for. The site's pages
+      // live after "#/", so a link typed without it (…/eduresources/flashcards) is sent to
+      // the same page in the app (…/eduresources/#/flashcards). The app shows its own
+      // "not in the library" page if the route does not exist either.
+      (function (location) {
+        var base = '/eduresources/';
+        if (location.pathname.indexOf(base) !== 0) return;
+        if (location.hash.indexOf('#/') === 0) { location.replace(base + location.hash); return; }
+        var route = location.pathname.slice(base.length).replace(/\/+$/, '');
+        location.replace(base + '#/' + route + location.search);
+      })(window.location);
+    </script>
+  </head>
+  <body>
+    <p>Opening EduResources… If nothing happens, <a href="/eduresources/">go to the home page</a>.</p>
+  </body>
+</html>

@@ -22,10 +22,29 @@ export default function EssayPlanner() {
   }, [question, ignoredQuestion, hasWork, setDraft]);
 
   function updateField(id, value) { setDraft(current => ({...current, fields: {...current.fields, [id]: value}})); }
+  // Focus the prompt's text box once it has rendered, so a mouse click on "Next prompt" does
+  // not leave focus on the button and typing can start at once. (A requestAnimationFrame
+  // callback can run before React commits, or not at all in a background tab.)
+  const pendingFocus = React.useRef(null);
+  React.useEffect(() => {
+    if (pendingFocus.current === null) return;
+    document.getElementById(`essay-${pendingFocus.current}`)?.focus();
+    pendingFocus.current = null;
+  });
   function goTo(index) {
+    pendingFocus.current = ESSAY_STEPS[index].id;
     setDraft(current => ({...current, step: index}));
-    requestAnimationFrame(() => document.getElementById(`essay-${ESSAY_STEPS[index].id}`)?.focus());
   }
+  // The second click of a double-click would move on again and skip a prompt: a repeat click within
+  // 400 ms of the last accepted one is ignored, while a deliberate run of clicks still advances. Keyboard
+  // activation has detail 0 and always counts. The mousedown handler below keeps focus in the text box.
+  const lastStep = React.useRef(-Infinity);
+  const step = (event, index) => {
+    if (event.detail > 1 && event.timeStamp - lastStep.current < 400) return;
+    lastStep.current = event.timeStamp;
+    goTo(index);
+  };
+  const keepFocusOnRepeat = event => { if (event.detail > 1) event.preventDefault(); };
   function downloadText() {
     const url = URL.createObjectURL(new Blob([makeEssayText(draft.fields, ESSAY_STEPS)], {type: 'text/plain;charset=utf-8'}));
     const anchor = document.createElement('a');
@@ -74,7 +93,7 @@ export default function EssayPlanner() {
     <div className="essay-layout">
       <nav className="essay-navigation" aria-label="Essay prompts"><ol>{ESSAY_STEPS.map((step, index) => <li key={step.id}><button type="button" aria-current={index === active ? 'step' : undefined} onClick={() => goTo(index)}><span>{index + 1}. {step.section}: {step.label}</span><span className="learn-help">{draft.fields[step.id]?.trim() ? 'Has notes' : 'Unfinished'}</span></button></li>)}</ol></nav>
       <div className="essay-editor">{draft.mode === 'outline' ? ESSAY_STEPS.map(renderField) : renderField(ESSAY_STEPS[active], active)}
-        {draft.mode === 'guided' && <div className="learn-actions learn-between"><button type="button" disabled={active === 0} onClick={() => goTo(active - 1)}>Previous prompt</button>{active < ESSAY_STEPS.length - 1 ? <button type="button" onClick={() => goTo(active + 1)}>{draft.fields[ESSAY_STEPS[active].id]?.trim() ? 'Next prompt' : 'Leave unfinished and continue'}</button> : <button type="button" onClick={() => setDraft(current => ({...current, mode: 'outline'}))}>Review the full plan</button>}</div>}
+        {draft.mode === 'guided' && <div className="learn-actions learn-between"><button type="button" disabled={active === 0} onMouseDown={keepFocusOnRepeat} onClick={event => step(event, active - 1)}>Previous prompt</button>{active < ESSAY_STEPS.length - 1 ? <button type="button" onMouseDown={keepFocusOnRepeat} onClick={event => step(event, active + 1)}>{draft.fields[ESSAY_STEPS[active].id]?.trim() ? 'Next prompt' : 'Leave unfinished and continue'}</button> : <button type="button" onClick={() => setDraft(current => ({...current, mode: 'outline'}))}>Review the full plan</button>}</div>}
       </div>
     </div>
     <div className="learn-footer"><button type="button" onClick={() => { if (window.confirm('Clear this essay plan on this device? Export it first if you want to keep a copy.')) { setDraft(EMPTY); setIgnoredQuestion(question); } }}>Clear essay plan</button></div>
