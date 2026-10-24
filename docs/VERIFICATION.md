@@ -53,8 +53,12 @@ The pre-existing local checkout and all its uncommitted/conflicted work were lef
 - Search finds the previously missing epistemology PDFs and exposes all tools/resources.
 - A personal rating entered in search is reflected on the matching topic card.
 - A filtered practice question enters an empty planner; a later question offers a choice instead of overwriting an existing draft.
-- Direct essay navigation, all 25 prompts in outline view, draft persistence after reload, and unfinished text export.
+- Direct essay navigation, all 26 prompts in outline view, draft persistence after reload, and unfinished text export.
 - Flashcard reveal, Unsure rating, review queue and persisted review after reload.
+- Flashcard keyboard shortcuts (← → change card, Space reveals, 1–3 rate a revealed card); rating a card moves to the next one and is announced to screen readers.
+- Essay planner: "Next prompt" moves focus into the new text box; the second click of a double-click is ignored, so a prompt is never skipped; prompt 3 asks for scholars and quotations (AO1).
+- AI tutor: Enter sends the question, Shift+Enter adds a line; the box is named "Your question" by assistive technology, with the example as its description.
+- An address without "#/" (for example `/eduresources/flashcards?topic=kantianism`) is redirected by `404.html` to the matching page; unknown routes still reach the site's own "not in the library" page.
 - Logic initial answer, worked example, revised answer and persisted revision after reload.
 - Light and dark themes; 390 CSS-pixel mobile layout without horizontal overflow on the home, flashcard and planner views.
 - Actual WebGPU model download, cancellation/retry, and a local inference response. The returned modus-tollens form was correct.

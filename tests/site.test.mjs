@@ -158,3 +158,22 @@ test('Moral Rules versus the Greater Good replaces the Defender–Challenger deb
   assert.ok(!RESOURCES.some(resource => resource.id === 'utilitarianism-debate-audio' || /Defender-Challenger/.test(resource.file || '')), 'old debate still linked');
   for (const retired of RETIRED) assert.ok(!existsSync(path.join(ROOT, retired)), `${retired} should have been removed`);
 });
+
+test('an address typed without "#/" is sent to the matching page by 404.html', () => {
+  // GitHub Pages serves 404.html for any path it has no file for; the page's own script does the redirect.
+  const page = readFileSync(path.join(ROOT, '404.html'), 'utf8');
+  assert.match(page, /^<!doctype html>/i);
+  assert.ok(!/<script[^>]*\ssrc=/.test(page), 'the redirect must not depend on another file');
+  const script = page.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const run = (pathname, search = '', hash = '') => {
+    const calls = [];
+    new Function('window', script)({ location: { pathname, search, hash, replace: url => calls.push(url) } });
+    return calls;
+  };
+  assert.deepEqual(run('/eduresources/flashcards'), ['/eduresources/#/flashcards']);
+  assert.deepEqual(run('/eduresources/philosophy-ethics-revision/utilitarianism/'), ['/eduresources/#/philosophy-ethics-revision/utilitarianism']);
+  assert.deepEqual(run('/eduresources/flashcards', '?topic=kantianism'), ['/eduresources/#/flashcards?topic=kantianism']);
+  assert.deepEqual(run('/eduresources/anything', '', '#/ai-tutor'), ['/eduresources/#/ai-tutor']);
+  assert.deepEqual(run('/eduresources/'), ['/eduresources/#/']);
+  assert.deepEqual(run('/other-site/page'), [], 'addresses outside the site are left alone');
+});

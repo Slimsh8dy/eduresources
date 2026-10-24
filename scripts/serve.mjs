@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -17,5 +17,9 @@ http.createServer(async (req, res) => {
     if (!info.isFile()) throw new Error('not found');
     res.writeHead(200, { 'Content-Type': mime[path.extname(target)] || 'application/octet-stream', 'Content-Length': info.size, 'Cache-Control': 'no-cache' });
     if (req.method === 'HEAD') res.end(); else createReadStream(target).pipe(res);
-  } catch { res.writeHead(404); res.end('Not found'); }
+  } catch {
+    // Like GitHub Pages: a missing address under the site gets 404.html, which redirects to the app.
+    const page = req.url.startsWith('/eduresources/') ? readFileSync(path.join(root, '404.html')) : 'Not found';
+    res.writeHead(404, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' }); res.end(page);
+  }
 }).listen(4173, '127.0.0.1', () => console.log('Preview: http://localhost:4173/eduresources/'));

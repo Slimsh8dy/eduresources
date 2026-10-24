@@ -63,7 +63,7 @@ export default function AiTutorPage() {
     try {
       const result = await ai.ask(prompt, { onDelta: text => setLive({ question: prompt, answer: text }) });
       setExchanges(previous => [...previous.slice(-11), { question: prompt, ...result }]);
-      setQuestion('');
+      setQuestion(current => (current === prompt ? '' : current)); // keep a follow-up typed while the answer streamed
       questionRef.current?.focus();
     } catch (error) {
       if (error.name === 'AbortError') setNotice('Stopped. Your question is still in the box.');
@@ -80,12 +80,20 @@ export default function AiTutorPage() {
     {!ai.configured && <p className="tutor-notice" role="status">The tutor is not connected yet. Everything else on the site works as usual.</p>}
 
     <form onSubmit={handleAsk} className="tutor-form">
-      <label htmlFor="tutor-question">Your question</label>
+      <label id="tutor-question-label" htmlFor="tutor-question">Your question</label>
+      {/* The example lives in the description, not a placeholder: a placeholder can be read out as the
+          box's name, is hard to see, and disappears while typing. */}
+      <p id="tutor-example" className="tutor-help">For example: How does Kant distinguish acting from duty from acting in accordance with duty?</p>
       <textarea id="tutor-question" ref={questionRef} value={question} onChange={event => setQuestion(event.target.value)}
-        rows={3} maxLength={QUESTION_MAX_CHARS} aria-describedby="tutor-help" disabled={!ai.configured || exhausted}
-        placeholder="For example: How does Kant distinguish acting from duty from acting in accordance with duty?" />
+        onKeyDown={event => {
+          // Enter sends, as in a chat box; Shift+Enter keeps a new line. The Enter that confirms IME
+          // composition is left alone (WebKit reports it with keyCode 229 rather than isComposing).
+          if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+          handleAsk(event); // not form.requestSubmit(): missing in Safari before 16
+        }}
+        rows={3} maxLength={QUESTION_MAX_CHARS} aria-labelledby="tutor-question-label" aria-describedby="tutor-example tutor-help" disabled={!ai.configured || exhausted} />
       <p id="tutor-help" className="tutor-help">
-        One focused question at a time (up to about 250 words). Please do not include personal information.
+        One focused question at a time (up to about 250 words). Press Enter to ask, Shift+Enter for a new line. Please do not include personal information.
         {question.length >= QUESTION_MAX_CHARS - 200 && <> {QUESTION_MAX_CHARS - question.length} characters left.</>}
         {typeof ai.remaining === 'number' && typeof ai.allowance === 'number' && <> {exhausted ? 'No questions left today.' : `${ai.remaining} of ${ai.allowance} questions left today.`}</>}
       </p>

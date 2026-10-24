@@ -35,12 +35,13 @@ No API key, paid inference server, or model installation is required. `npm ci` n
 | `worker/` | The Cloudflare Worker that answers tutor questions with Workers AI. `worker/dist/tutor.js` is the single-file bundle for pasting into the Cloudflare dashboard. |
 | `dist/` | Intermediate Vite build, not the GitHub Pages publishing root. |
 | Root `index.html` and `assets/` | Generated files committed for static GitHub Pages hosting. Do not hand-edit these. |
+| `404.html` | Served by GitHub Pages for any address it has no file for; its script sends `…/eduresources/flashcards` to `…/eduresources/#/flashcards`. Hand-written, not generated. |
 | `resources/` | PDFs and audio (WAV recordings and one M4A debate). Archived files are preserved for existing links. |
 | `scripts/publish-build.mjs` | Copies only the new generated HTML and assets into the publishing root. |
 | `tests/` | Content, state, tutor client, Worker, catalogue, and original-asset protection checks. |
 | `docs/CONTENT-REVIEW.md` | Corrections, provenance limitations, and caveats in legacy materials. |
 
-The application uses hash routes (for example, `#/flashcards`) so direct links work on static hosting. The configured base URL is `/eduresources/`.
+The application uses hash routes (for example, `#/flashcards`) so direct links work on static hosting. The configured base URL is `/eduresources/`. A link typed without the `#/` still arrives, via `404.html`.
 
 ## Source recovery and publication
 

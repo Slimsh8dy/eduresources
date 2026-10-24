@@ -93,7 +93,7 @@ function SearchPanel({ onClose }) {
       <div className="section-heading"><h2>Find your next step</h2><button type="button" onClick={onClose}>Close search</button></div>
       <div className="search-fields"><label>Search resources and tools<input ref={input} type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Try Kant, epistemology, or essay planner…" /></label><label>Resource type<select value={type} onChange={e => setType(e.target.value)}><option value="all">All types</option><option value="pdf">PDFs</option><option value="audio">Audio</option><option value="external">Podcasts</option><option value="tool">Study tools</option></select></label></div>
       <p className="muted" role="status">{results.length} {results.length === 1 ? 'result' : 'results'}</p>
-      {results.length ? <><div className="card-grid search-results">{results.map(r => <ResourceCard key={r.id} resource={r} search onNavigate={onClose} />)}</div><RatingNote /></> : <p>No matches. Try a thinker’s name, a broader topic or “logic”.</p>}
+      {results.length ? <><div className="card-grid search-results">{results.map(r => <ResourceCard key={r.id} resource={r} search onNavigate={onClose} />)}</div><RatingNote /></> : <p>No matches{query.trim() && <> for “{query.trim()}”</>}. Try a thinker’s name, a broader topic or “logic”, or <Link to="/ai-tutor" onClick={onClose}>ask the AI tutor</Link>.</p>}
     </div>
   </section>;
 }
