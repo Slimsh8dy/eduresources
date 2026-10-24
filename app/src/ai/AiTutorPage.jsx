@@ -61,7 +61,8 @@ export default function AiTutorPage() {
     setNotice('');
     setLive({ question: prompt, answer: '' });
     try {
-      const result = await ai.ask(prompt, { onDelta: text => setLive({ question: prompt, answer: text }) });
+      // Earlier exchanges on this page go along, so "is that right?" is understood; the Worker keeps the newest three.
+      const result = await ai.ask(prompt, { history: exchanges, onDelta: text => setLive({ question: prompt, answer: text }) });
       setExchanges(previous => [...previous.slice(-11), { question: prompt, ...result }]);
       setQuestion(current => (current === prompt ? '' : current)); // keep a follow-up typed while the answer streamed
       questionRef.current?.focus();
@@ -121,7 +122,7 @@ export default function AiTutorPage() {
 
     <details className="tutor-about">
       <summary>About this tutor</summary>
-      <p>Your question is sent to a small program on Cloudflare, which adds relevant notes from this site and asks the <strong>{modelLabel}</strong> model (an open-weight model run on Cloudflare Workers AI) for an answer. Nothing is stored by the site and the conversation disappears when you leave the page. Cloudflare states that it does not use this content to train models.</p>
+      <p>Your question is sent to a small program on Cloudflare, which adds relevant notes from this site and asks the <strong>{modelLabel}</strong> model (an open-weight model run on Cloudflare Workers AI) for an answer. Your last three exchanges on this page are sent with it, so a follow-up such as “is that right?” is understood. Nothing is stored by the site: the conversation lives only in this page and disappears when you leave it or clear it. Cloudflare states that it does not use this content to train models.</p>
       <p>The tutor is free to use and shares a daily allowance with everyone who visits. If it runs out, it says so and resets at midnight UTC. Each person may ask three questions a minute and ten a day (counted per browser, not per account), and a question is limited to about 250 words, so ask about one point rather than pasting a whole essay.</p>
       <p>Answers are generated text: they can misattribute a view or invent a reference. The tutor does not mark work and has not read the PDFs in the library; links under an answer come from the site's own catalogue. For practice without AI, try the <Link to="/flashcards">flashcards</Link>, <Link to="/philosophy-fundamentals/logic-problems">logic problems</Link> and the <Link to="/philosophy-basics">essay planner</Link>.</p>
     </details>

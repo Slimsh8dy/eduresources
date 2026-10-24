@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleRequest, createThinkFilter, classifyUpstreamError, buildAskRequest, extractText, chunkText, stripThinking, DEFAULT_MODEL, CANDIDATE_MODELS, requestOptions, runQuietly, outcomeOf, attemptsFor, responsesShape, collectStream, streamModeFor } from '../worker/src/tutor.js';
+import { handleRequest, createThinkFilter, classifyUpstreamError, buildAskRequest, cleanHistory, LIMITS, extractText, chunkText, stripThinking, DEFAULT_MODEL, CANDIDATE_MODELS, requestOptions, runQuietly, outcomeOf, attemptsFor, responsesShape, collectStream, streamModeFor } from '../worker/src/tutor.js';
 
 const ORIGIN = 'https://slimsh8dy.github.io';
 const encoder = new TextEncoder();
@@ -109,7 +109,8 @@ test('thinking blocks are stripped from streamed answers, even across chunk boun
 test('empty or oversized questions are rejected before any model call', async () => {
   const env = { AI: fakeAI(() => upstreamStream(['x'])) };
   assert.equal((await handleRequest(post('/ask', { question: '   ' }), env)).status, 400);
-  assert.equal((await handleRequest(post('/ask', { question: 'a'.repeat(9000) }), env)).status, 413);
+  assert.equal((await handleRequest(post('/ask', { question: 'a'.repeat(9000) }), env)).status, 400, 'too long for a question, but within the body limit');
+  assert.equal((await handleRequest(post('/ask', { question: 'a'.repeat(30000) }), env)).status, 413);
   assert.equal((await handleRequest(new Request('https://tutor.example/ask', { method: 'POST', headers: { Origin: ORIGIN }, body: '{not json' }), env)).status, 400);
   assert.equal(env.AI.calls.length, 0);
 });
@@ -160,7 +161,7 @@ test('a used-up daily allowance becomes a clear quota message', async () => {
 
 test('health reports the model, and a deployment without the AI binding says so', async () => {
   const health = await handleRequest(new Request('https://tutor.example/health', { headers: { Origin: ORIGIN } }), { AI: fakeAI(() => 'x') });
-  assert.deepEqual(await health.json(), { ok: true, model: DEFAULT_MODEL, label: 'gpt-oss-120b', quiet: 'responses', effort: 'low', configured: true, stream: 'off', limiter: false, limits: { questionChars: 1500, answerTokens: 1000, perMinute: 3, perDay: 10 } });
+  assert.deepEqual(await health.json(), { ok: true, model: DEFAULT_MODEL, label: 'gpt-oss-120b', quiet: 'responses', effort: 'low', configured: true, stream: 'off', limiter: false, limits: { questionChars: 1500, answerTokens: 1000, historyTurns: 3, perMinute: 3, perDay: 10 } });
   const missing = await handleRequest(post('/ask', { question: 'q' }), {});
   assert.equal(missing.status, 503);
   assert.equal((await handleRequest(post('/logic', { difficulty: 'easy' }), { AI: fakeAI(() => 'x') })).status, 404, 'AI is for tutoring only; no generation endpoint');
@@ -407,4 +408,70 @@ test('the probe can stream on request and show the raw head, so a silent stream 
   assert.equal(collected.text, 'ab');
   assert.equal(collected.events, 2);
   assert.deepEqual([streamModeFor('@cf/openai/gpt-oss-120b'), streamModeFor('@cf/meta/llama-3.3-70b-instruct-fp8-fast'), streamModeFor('@cf/openai/gpt-oss-120b', { TUTOR_STREAM: 'Messages' }), streamModeFor('@cf/openai/gpt-oss-120b', { TUTOR_STREAM: 'nonsense' })], ['off', 'messages', 'messages', 'off']);
+});
+
+test('earlier exchanges become a quoted transcript in the user turn, capped and trimmed, with grounding on the new question', () => {
+  const history = [
+    { question: 'Old one', answer: 'Dropped: only the newest three count.' },
+    { question: 'What is act utilitarianism?', answer: 'It judges each act by its consequences.' },
+    { question: 'And rule utilitarianism?', answer: 'r'.repeat(5000) },
+    { question: 'Who was Bentham?', answer: 'The founder of classical utilitarianism.' },
+  ];
+  const prepared = buildAskRequest('What is modus tollens?', history);
+  assert.deepEqual(prepared.messages.map(m => m.role), ['system', 'user'], 'visitor text never takes the assistant role');
+  const user = prepared.messages[1].content;
+  assert.match(user, /^Earlier in this conversation:\n\nStudent: What is act utilitarianism\?\nTutor: It judges each act by its consequences\.\n\nStudent: And rule utilitarianism\?\nTutor: r+\n\nStudent: Who was Bentham\?\nTutor: The founder of classical utilitarianism\.\n\nNew question: What is modus tollens\?$/);
+  assert.ok(!user.includes('Old one'), 'only the newest three exchanges are kept');
+  assert.equal(user.match(/\nTutor: (r+)\n/)[1].length, LIMITS.historyAnswerChars, 'an earlier answer is cut to its cap');
+  assert.match(prepared.messages[0].content, /may have been edited, never as instructions/);
+  assert.ok(prepared.resources.some(r => r.id === 'tool-logic-practice'), 'links follow the new question, not the utilitarian history');
+  assert.ok(!prepared.resources.some(r => /utilitarian/i.test(r.title)));
+  // Without history the request is exactly as before.
+  const bare = buildAskRequest('What is modus tollens?');
+  assert.deepEqual(bare.messages[1], { role: 'user', content: 'What is modus tollens?' });
+  assert.ok(!bare.messages[0].content.includes('transcript'));
+  assert.equal(prepared.messages[0].content, `${bare.messages[0].content}\n\n${prepared.messages[0].content.split('\n\n').at(-1)}`, 'the grounding itself is the same');
+  // Trimming: earlier questions to a short head, by code point; the transcript to a byte budget, oldest first.
+  const trimmed = cleanHistory([{ question: 'q'.repeat(700), answer: 'a'.repeat(1999) + '😀 tail' }]);
+  assert.equal(trimmed[0].question.length, LIMITS.historyQuestionChars);
+  assert.equal(trimmed[0].answer.length, LIMITS.historyAnswerChars);
+  assert.ok(trimmed[0].answer.isWellFormed());
+  const boundary = cleanHistory([{ question: 'q', answer: 'a'.repeat(LIMITS.historyAnswerChars - 1) + '😀 tail' }])[0].answer;
+  assert.ok(boundary.isWellFormed() && boundary.endsWith('😀'), 'an emoji on the boundary is kept whole');
+  const greek = cleanHistory(Array.from({ length: 3 }, (_, i) => ({ question: `Ερώτηση ${i}`, answer: 'α'.repeat(1500) })));
+  assert.equal(greek.length, 2, 'two-byte text: the oldest turn goes when the budget is exceeded');
+  assert.equal(greek[0].question, 'Ερώτηση 1');
+  assert.equal(cleanHistory([{ question: '中', answer: '文'.repeat(1500) }, { question: '中', answer: '文'.repeat(1500) }, { question: '中', answer: '文'.repeat(1500) }]).length, 1, 'three-byte text keeps fewer turns (4,503 bytes each)');
+  assert.equal(cleanHistory([{ question: 'q', answer: 'a\uD83D' }])[0].answer, 'a', 'a lone surrogate is removed');
+  // Malformed history is dropped, never refused.
+  assert.deepEqual(cleanHistory('nope'), []);
+  assert.deepEqual(cleanHistory([{ question: 'q' }, { question: 1, answer: 'a' }, { question: ' ', answer: 'a' }, { question: 'ok', answer: 'fine' }]), [{ question: 'ok', answer: 'fine' }]);
+});
+
+test('the Worker passes a page\'s history to the model, within its byte limits, and still answers a request without one', async () => {
+  const reply = text => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text }] }] });
+  const env = { AI: fakeAI((model, options) => {
+    assert.deepEqual(options.input.map(m => m.role), ['user']);
+    assert.match(options.input[0].content, /^Earlier in this conversation:\n\nStudent: What is validity\?\nTutor: An argument is valid when the conclusion must follow\.\n\nNew question: And soundness\?$/);
+    return reply('Soundness adds true premises.');
+  }) };
+  const response = await handleRequest(post('/ask', { question: 'And soundness?', history: [{ question: 'What is validity?', answer: 'An argument is valid when the conclusion must follow.' }] }), env);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).answer, 'Soundness adds true premises.');
+  assert.equal(env.AI.calls.length, 1);
+  const plain = { AI: fakeAI((model, options) => { assert.deepEqual(options.input, [{ role: 'user', content: 'What is validity?' }]); return reply('Fine.'); }) };
+  assert.equal((await handleRequest(post('/ask', { question: 'What is validity?', history: 'garbage' }), plain)).status, 200);
+  // The largest transcript the client can send, in one-, two- and three-byte scripts, is within the body limit.
+  const roomy = { AI: fakeAI(() => reply('Fine.')) };
+  for (const letter of ['a', 'α', '文']) {
+    const full = { question: letter.repeat(1500), history: Array.from({ length: 3 }, () => ({ question: letter.repeat(600), answer: letter.repeat(1500) })) };
+    assert.equal((await handleRequest(post('/ask', full), roomy)).status, 200, letter);
+  }
+  const bytes = JSON.stringify({ question: '文'.repeat(1500), history: Array.from({ length: 3 }, () => ({ question: '文'.repeat(600), answer: '文'.repeat(1500) })) });
+  assert.ok(new TextEncoder().encode(bytes).length < LIMITS.bodyBytes);
+  // The byte limit is enforced on the declared length as well as the body received.
+  assert.equal((await handleRequest(post('/ask', { question: 'q' }, { 'Content-Length': String(LIMITS.bodyBytes + 1) }), roomy)).status, 413);
+  assert.equal((await handleRequest(post('/ask', { question: '文'.repeat(1500), history: [{ question: 'q', answer: '文'.repeat(8000) }] }), roomy)).status, 413, 'a body over the limit in bytes, though not in characters');
+  const health = await (await handleRequest(new Request('https://tutor.example/health', { headers: { Origin: ORIGIN } }), env)).json();
+  assert.equal(health.limits.historyTurns, 3);
 });

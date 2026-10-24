@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { browserId, createTutorClient, readEventStream, readDaily } from '../app/src/ai/client.mjs';
+import { browserId, conversationHistory, createTutorClient, readEventStream, readDaily, HISTORY_ANSWER_CHARS, HISTORY_QUESTION_CHARS } from '../app/src/ai/client.mjs';
 import { relatedResources, resourceTarget, studyContext } from '../app/src/ai/grounding.mjs';
 
 const encoder = new TextEncoder();
@@ -180,4 +180,52 @@ test('the daily allowance is read from the Worker, kept per browser for the day,
   assert.equal(fresh.getSnapshot().remaining, 0, 'a new page load remembers the day is used up');
   fresh.dispose();
   assert.deepEqual(readDaily({ getItem: () => { throw new Error('blocked'); } }), { remaining: null, allowance: null });
+});
+
+test('earlier exchanges travel with a question, newest three only and trimmed; none means no history field', async () => {
+  const calls = [];
+  const client = createTutorClient({
+    endpoint: 'https://tutor.example',
+    fetch: async (url, init) => { calls.push(JSON.parse(init.body)); return jsonResponse({ answer: 'Yes.', resources: [], remaining: 9, allowance: 10 }); },
+  });
+  await client.ask('First?');
+  assert.deepEqual(calls[0], { question: 'First?' }, 'no history yet, so no history field');
+  const exchanges = [
+    { question: 'Q1', answer: 'A1' }, { question: 'Q2', answer: 'A2' }, { question: ' Q3 ', answer: 'x'.repeat(2500), resources: [] },
+    { question: 'Q4', answer: 'A4' }, { question: '', answer: 'dropped' }, null,
+  ];
+  await client.ask('Is that right?', { history: exchanges });
+  const sent = calls[1];
+  assert.equal(sent.question, 'Is that right?');
+  assert.deepEqual(sent.history.map(turn => turn.question), ['Q2', 'Q3', 'Q4'], 'the newest three usable exchanges, oldest first');
+  assert.equal(sent.history[1].answer.length, HISTORY_ANSWER_CHARS, 'long answers are cut to the shared cap');
+  assert.deepEqual(Object.keys(sent.history[1]), ['question', 'answer'], 'only the text travels, not resources');
+  assert.deepEqual(conversationHistory([]), []);
+  assert.deepEqual(conversationHistory(undefined), []);
+  // Trimming by code point and by bytes, as the Worker does.
+  assert.equal(conversationHistory([{ question: 'q'.repeat(700), answer: 'a' }])[0].question.length, HISTORY_QUESTION_CHARS);
+  const cut = conversationHistory([{ question: 'q', answer: 'a'.repeat(HISTORY_ANSWER_CHARS - 1) + '😀 tail' }])[0].answer;
+  assert.ok(cut.isWellFormed() && cut.endsWith('😀'));
+  assert.equal(conversationHistory(Array.from({ length: 3 }, () => ({ question: '中', answer: '文'.repeat(1500) }))).length, 1, 'the oldest turns go when the byte budget is exceeded (4,503 bytes each)');
+  client.dispose();
+});
+
+test('a Worker that refuses the transcript as too large still gets the question on its own', async () => {
+  const calls = [];
+  const client = createTutorClient({
+    endpoint: 'https://tutor.example',
+    fetch: async (url, init) => {
+      const body = JSON.parse(init.body); calls.push(body);
+      if (body.history) return jsonResponse({ error: 'bad_request', message: 'Request too large.' }, 413);
+      return jsonResponse({ answer: 'Without memory.', resources: [], remaining: 8, allowance: 10 });
+    },
+  });
+  const result = await client.ask('And then?', { history: [{ question: 'Before', answer: 'An answer.' }] });
+  assert.equal(result.answer, 'Without memory.');
+  assert.deepEqual(calls.map(body => Boolean(body.history)), [true, false], 'one retry, without the history');
+  assert.equal(client.getSnapshot().status, 'idle');
+  // Any other failure is reported as before, with no retry.
+  const failing = createTutorClient({ endpoint: 'https://tutor.example', fetch: async () => jsonResponse({ error: 'rate_limited', message: 'Slow down.' }, 429) });
+  await assert.rejects(failing.ask('More?', { history: [{ question: 'Before', answer: 'An answer.' }] }), /Slow down/);
+  client.dispose(); failing.dispose();
 });
