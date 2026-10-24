@@ -74,6 +74,10 @@ Fair-use limits, all enforced by the Worker: a question may be at most 1,500 cha
 
 Developers can instead run `npx wrangler deploy` inside `worker/` (it reads `worker/wrangler.jsonc`). After changing anything under `worker/src/`, run `npm run build:worker` to regenerate the single-file bundle.
 
+### Checking the live tutor
+
+`.github/workflows/tutor-smoke.yml` is a manual GitHub Actions workflow (Actions tab → *Tutor smoke test* → *Run workflow*, or `gh workflow run tutor-smoke.yml`). From GitHub's network it reads `/health`, asks one question, asks a follow-up that relies on the conversation memory, and writes the answers and response times to the run summary. Each run spends two of the day's questions for its own client id. Useful when the tutor seems slow from a particular network: `workers.dev` is blocked by some home routers and ISP filters.
+
 ### Changing the model
 
 The Worker runs whichever model the `MODEL` variable names (**Settings → Variables**); without one it uses gpt-oss-120b. The models it knows how to drive are listed in `CANDIDATE_MODELS` in `worker/src/tutor.js`, each with the way its private "thinking" is kept out of the answer budget (thinking otherwise counts against the tokens allowed for the reply, and a model that thinks for too long returns no answer at all). Two spellings of the token budget are sent so that older and newer Workers AI schemas both honour it. The tutor page shows the model's name from the Worker's `/health` reply, so no site rebuild is needed when the model changes.

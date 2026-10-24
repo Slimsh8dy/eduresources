@@ -1,0 +1,80 @@
+# Asks the live tutor one question (and one follow-up that relies on the conversation memory) from
+# GitHub's network and reports the response times. Run it by hand from the Actions tab or with
+# `gh workflow run tutor-smoke.yml`. Each run spends two of the day's questions for its own client id.
+name: Tutor smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      question:
+        description: The question to ask
+        default: What is act utilitarianism?
+        required: true
+
+permissions: {}
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TUTOR: https://eduresources-tutor.karolosgala.workers.dev
+      ORIGIN: https://slimsh8dy.github.io
+      CLIENT: github-actions-smoke-test
+      QUESTION: ${{ inputs.question }}
+    steps:
+      - name: Health
+        run: |
+          curl -sS --max-time 30 -w '\nhealth: HTTP %{http_code} in %{time_total}s\n' -H "Origin: $ORIGIN" "$TUTOR/health" | tee health.txt
+          grep -q '"ok":true' health.txt
+
+      - name: Ask the question
+        run: |
+          body=$(jq -cn --arg q "$QUESTION" '{question: $q}')
+          curl -sS --max-time 120 -o answer.json -w '%{http_code} %{time_total}' -X POST \
+            -H 'Content-Type: application/json' -H "Origin: $ORIGIN" -H "X-Tutor-Client: $CLIENT" \
+            -d "$body" "$TUTOR/ask" > status.txt
+          read -r status seconds < status.txt
+          echo "first answer: HTTP $status in ${seconds}s"
+          test "$status" = 200
+          jq -e '.answer | length > 0' answer.json > /dev/null
+          echo "FIRST_SECONDS=$seconds" >> "$GITHUB_ENV"
+
+      - name: Ask a follow-up that only makes sense with memory
+        run: |
+          body=$(jq -cn --arg q "$QUESTION" --slurpfile a answer.json \
+            '{question: "Is that right? Answer in one sentence and name the thinker you were just discussing.", history: [{question: $q, answer: $a[0].answer}]}')
+          curl -sS --max-time 120 -o follow.json -X POST \
+            -H 'Content-Type: application/json' -H "Origin: $ORIGIN" -H "X-Tutor-Client: $CLIENT" \
+            -d "$body" "$TUTOR/ask" -w '%{http_code} %{time_total}' > status2.txt
+          read -r status seconds < status2.txt
+          echo "follow-up: HTTP $status in ${seconds}s"
+          test "$status" = 200
+          jq -e '.answer | length > 0' follow.json > /dev/null
+          echo "FOLLOW_SECONDS=$seconds" >> "$GITHUB_ENV"
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "## Tutor smoke test"
+            echo
+            echo "Health: \`$(tail -1 health.txt 2>/dev/null)\`"
+            echo
+            echo "| Step | Time |"
+            echo "|---|---|"
+            echo "| First question | ${FIRST_SECONDS:-failed} s |"
+            echo "| Follow-up with memory | ${FOLLOW_SECONDS:-failed} s |"
+            echo
+            echo "**Question:** $QUESTION"
+            echo
+            echo "**Answer:**"
+            echo
+            jq -r '.answer' answer.json 2>/dev/null | sed 's/^/> /'
+            echo
+            echo "**Follow-up (\"Is that right? …\"):**"
+            echo
+            jq -r '.answer' follow.json 2>/dev/null | sed 's/^/> /'
+            echo
+            echo "Questions left today for this client: $(jq -r '.remaining' follow.json 2>/dev/null) of $(jq -r '.allowance' follow.json 2>/dev/null)"
+          } >> "$GITHUB_STEP_SUMMARY"
